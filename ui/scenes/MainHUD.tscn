@@ -1,0 +1,525 @@
+[gd_scene load_steps=18 format=2]
+
+[ext_resource path="res://ui/scripts/MainHUD.gd" type="Script" id=1]
+[ext_resource path="res://ui/shaders/advanced_glass.shader" type="Shader" id=2]
+[ext_resource path="res://ui/shaders/console_body.shader" type="Shader" id=3]
+[ext_resource path="res://ui/shaders/console_button.shader" type="Shader" id=4]
+[ext_resource path="res://ui/shaders/stylized_progress.shader" type="Shader" id=5]
+[ext_resource path="res://ui/icons/inventory.jpg" type="Texture" id=6]
+[ext_resource path="res://ui/icons/map.jpg" type="Texture" id=7]
+[ext_resource path="res://ui/icons/social.jpg" type="Texture" id=8]
+[ext_resource path="res://ui/icons/settings.jpg" type="Texture" id=9]
+[ext_resource path="res://ui/icons/health.jpg" type="Texture" id=10]
+[ext_resource path="res://ui/icons/mana.jpg" type="Texture" id=11]
+[ext_resource path="res://ui/shaders/symbol_icons.shader" type="Shader" id=12]
+
+
+[sub_resource type="ShaderMaterial" id=1]
+shader = ExtResource( 2 )
+shader_param/blur_amount = 4.0
+shader_param/bg_color = Color( 0.0627451, 0.0980392, 0.133333, 0.6 )
+shader_param/border_color = Color( 1, 1, 1, 0.1 )
+shader_param/corner_radius = 1.0
+shader_param/border_width = 1.0
+
+[sub_resource type="ShaderMaterial" id=2]
+shader = ExtResource( 5 )
+shader_param/value = 0.75
+shader_param/color_start = Color( 0.862745, 0.14902, 0.14902, 1 )
+shader_param/color_end = Color( 0.972549, 0.443137, 0.443137, 1 )
+shader_param/bg_color = Color( 0, 0, 0, 0.85 )
+shader_param/aspect_ratio = 32.5
+
+[sub_resource type="ShaderMaterial" id=3]
+shader = ExtResource( 5 )
+shader_param/value = 0.5
+shader_param/color_start = Color( 0.145098, 0.388235, 0.921569, 1 )
+shader_param/color_end = Color( 0.376471, 0.647059, 0.980392, 1 )
+shader_param/bg_color = Color( 0, 0, 0, 0.85 )
+shader_param/aspect_ratio = 36.66
+
+[sub_resource type="ShaderMaterial" id=4]
+shader = ExtResource( 4 )
+shader_param/color_top = Color( 0.278431, 0.333333, 0.411765, 1 )
+shader_param/color_bottom = Color( 0.0588235, 0.0901961, 0.164706, 1 )
+shader_param/corner_radius = 0.5
+
+[sub_resource type="ShaderMaterial" id=5]
+shader = ExtResource( 4 )
+shader_param/color_top = Color( 0.937255, 0.266667, 0.266667, 1 )
+shader_param/color_bottom = Color( 0.6, 0.105882, 0.105882, 1 )
+shader_param/corner_radius = 0.5
+
+[sub_resource type="ShaderMaterial" id=6]
+shader = ExtResource( 2 )
+shader_param/blur_amount = 4.0
+shader_param/bg_color = Color( 0.0627451, 0.0980392, 0.133333, 0.6 )
+shader_param/border_color = Color( 1, 1, 1, 0.1 )
+shader_param/corner_radius = 0.3
+shader_param/border_width = 1.0
+
+[sub_resource type="ShaderMaterial" id=7]
+shader = ExtResource( 2 )
+shader_param/blur_amount = 2.0
+shader_param/bg_color = Color( 0.0627451, 0.0980392, 0.133333, 0.95 )
+shader_param/border_color = Color( 1, 1, 1, 0.15 )
+shader_param/corner_radius = 0.15
+shader_param/border_width = 1.0
+
+[sub_resource type="ShaderMaterial" id=8]
+shader = ExtResource( 2 )
+shader_param/blur_amount = 5.0
+shader_param/bg_color = Color( 0.0588235, 0.0901961, 0.117647, 0.92 )
+shader_param/border_color = Color( 1, 1, 1, 0.3 )
+shader_param/corner_radius = 0.2
+shader_param/border_width = 1.8
+
+[sub_resource type="ShaderMaterial" id=9]
+shader = ExtResource( 5 )
+shader_param/value = 0.0
+shader_param/color_start = Color( 1, 1, 1, 1 )
+shader_param/color_end = Color( 1, 1, 1, 1 )
+shader_param/bg_color = Color( 0.05, 0.07, 0.1, 0.9 )
+shader_param/aspect_ratio = 3.08
+shader_param/pulse_speed = 0.0
+
+[sub_resource type="ShaderMaterial" id=10]
+shader = ExtResource( 5 )
+shader_param/value = 0.0
+shader_param/color_start = Color( 1, 1, 1, 1 )
+shader_param/color_end = Color( 1, 1, 1, 1 )
+shader_param/bg_color = Color( 0.05, 0.07, 0.1, 0.9 )
+shader_param/aspect_ratio = 3.5
+shader_param/pulse_speed = 0.0
+
+[sub_resource type="ShaderMaterial" id=11]
+shader = ExtResource( 12 )
+shader_param/symbol_type = 0
+shader_param/color = Color( 0.45098, 0.823529, 1, 1 )
+shader_param/glow = 1.2
+
+[sub_resource type="ShaderMaterial" id=12]
+shader = ExtResource( 12 )
+shader_param/symbol_type = 1
+shader_param/color = Color( 1, 0.843137, 0, 1 )
+shader_param/glow = 1.2
+
+[node name="MainHUD" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource( 1 )
+__meta__ = {
+"_edit_use_anchors_": false
+}
+
+[node name="BackBufferCopy" type="BackBufferCopy" parent="."]
+copy_mode = 2
+
+[node name="LeftControlsBg" type="ColorRect" parent="."]
+material = SubResource( 7 )
+anchor_top = 1.0
+anchor_bottom = 1.0
+margin_left = 20.0
+margin_top = -240.0
+margin_right = 420.0
+margin_bottom = -20.0
+mouse_filter = 2
+__meta__ = {
+"_edit_use_anchors_": false
+}
+
+[node name="RightControlsBg" type="ColorRect" parent="."]
+material = SubResource( 7 )
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+margin_left = -420.0
+margin_top = -240.0
+margin_right = -20.0
+margin_bottom = -20.0
+mouse_filter = 2
+__meta__ = {
+"_edit_use_anchors_": false
+}
+
+[node name="Header" type="HBoxContainer" parent="."]
+anchor_right = 1.0
+margin_left = 24.0
+margin_top = 24.0
+margin_right = -24.0
+margin_bottom = 84.0
+mouse_filter = 2
+custom_constants/separation = 20
+
+[node name="PauseBtn" type="ColorRect" parent="Header"]
+material = SubResource( 1 )
+margin_right = 60.0
+margin_bottom = 60.0
+rect_min_size = Vector2( 60, 60 )
+
+[node name="Label" type="Label" parent="Header/PauseBtn"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+text = "||"
+align = 1
+valign = 1
+
+[node name="StatusBars" type="VBoxContainer" parent="Header"]
+margin_left = 80.0
+margin_right = 380.0
+margin_bottom = 60.0
+rect_min_size = Vector2( 300, 0 )
+mouse_filter = 2
+custom_constants/separation = 10
+
+[node name="HealthBarCont" type="HBoxContainer" parent="Header/StatusBars"]
+margin_right = 300.0
+margin_bottom = 20.0
+mouse_filter = 2
+custom_constants/separation = 12
+
+[node name="Icon" type="TextureRect" parent="Header/StatusBars/HealthBarCont"]
+margin_right = 20.0
+margin_bottom = 20.0
+rect_min_size = Vector2( 20, 20 )
+texture = ExtResource( 10 )
+expand = true
+stretch_mode = 6
+
+[node name="HealthBar" type="ColorRect" parent="Header/StatusBars/HealthBarCont"]
+material = SubResource( 2 )
+margin_left = 32.0
+margin_top = 6.0
+margin_right = 292.0
+margin_bottom = 14.0
+rect_min_size = Vector2( 260, 8 )
+size_flags_horizontal = 3
+
+[node name="Fill" type="Node" parent="Header/StatusBars/HealthBarCont/HealthBar"]
+
+[node name="ManaBarCont" type="HBoxContainer" parent="Header/StatusBars"]
+margin_top = 30.0
+margin_right = 300.0
+margin_bottom = 46.0
+mouse_filter = 2
+custom_constants/separation = 12
+
+[node name="Icon" type="TextureRect" parent="Header/StatusBars/ManaBarCont"]
+margin_right = 16.0
+margin_bottom = 16.0
+rect_min_size = Vector2( 16, 16 )
+texture = ExtResource( 11 )
+expand = true
+stretch_mode = 6
+
+[node name="ManaBar" type="ColorRect" parent="Header/StatusBars/ManaBarCont"]
+material = SubResource( 3 )
+margin_left = 28.0
+margin_top = 5.0
+margin_right = 248.0
+margin_bottom = 11.0
+rect_min_size = Vector2( 220, 6 )
+
+[node name="Fill" type="Node" parent="Header/StatusBars/ManaBarCont/ManaBar"]
+
+[node name="Currency" type="HBoxContainer" parent="Header"]
+margin_left = 360.0
+margin_right = 1232.0
+margin_bottom = 60.0
+size_flags_horizontal = 3
+mouse_filter = 2
+alignment = 2
+custom_constants/separation = 12
+
+[node name="Diamonds" type="ColorRect" parent="Header/Currency"]
+material = SubResource( 9 )
+margin_left = 686.0
+margin_top = 18.0
+margin_right = 760.0
+margin_bottom = 42.0
+rect_min_size = Vector2( 74, 24 )
+size_flags_vertical = 4
+
+[node name="H" type="HBoxContainer" parent="Header/Currency/Diamonds"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+margin_left = 6.0
+margin_right = -6.0
+mouse_filter = 2
+alignment = 1
+custom_constants/separation = 4
+
+[node name="Icon" type="ColorRect" parent="Header/Currency/Diamonds/H"]
+material = SubResource( 11 )
+margin_left = 4.0
+margin_top = 4.0
+margin_right = 20.0
+margin_bottom = 20.0
+rect_min_size = Vector2( 16, 16 )
+size_flags_vertical = 4
+
+[node name="Value" type="Label" parent="Header/Currency/Diamonds/H"]
+margin_left = 24.0
+margin_top = 5.0
+margin_right = 52.0
+margin_bottom = 19.0
+custom_colors/font_color = Color( 0.45098, 0.823529, 1, 1 )
+text = "1250"
+
+[node name="Gold" type="ColorRect" parent="Header/Currency"]
+material = SubResource( 10 )
+margin_left = 772.0
+margin_top = 18.0
+margin_right = 856.0
+margin_bottom = 42.0
+rect_min_size = Vector2( 84, 24 )
+size_flags_vertical = 4
+
+[node name="H" type="HBoxContainer" parent="Header/Currency/Gold"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+margin_left = 6.0
+margin_right = -6.0
+mouse_filter = 2
+alignment = 1
+custom_constants/separation = 4
+
+[node name="Icon" type="ColorRect" parent="Header/Currency/Gold/H"]
+material = SubResource( 12 )
+margin_left = 9.0
+margin_top = 5.0
+margin_right = 23.0
+margin_bottom = 19.0
+rect_min_size = Vector2( 14, 14 )
+size_flags_vertical = 4
+
+[node name="Value" type="Label" parent="Header/Currency/Gold/H"]
+margin_left = 27.0
+margin_top = 5.0
+margin_right = 62.0
+margin_bottom = 19.0
+custom_colors/font_color = Color( 1, 0.843137, 0, 1 )
+text = "50400"
+
+[node name="Sidebar" type="VBoxContainer" parent="."]
+anchor_top = 0.5
+anchor_bottom = 0.5
+margin_left = 24.0
+margin_top = -180.0
+margin_right = 84.0
+margin_bottom = 96.0
+mouse_filter = 2
+custom_constants/separation = 15
+
+[node name="Backpack" type="ColorRect" parent="Sidebar"]
+material = SubResource( 8 )
+margin_right = 60.0
+margin_bottom = 60.0
+rect_min_size = Vector2( 60, 60 )
+
+[node name="Icon" type="TextureRect" parent="Sidebar/Backpack"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+margin_left = 10.0
+margin_top = 10.0
+margin_right = -10.0
+margin_bottom = -10.0
+mouse_filter = 2
+texture = ExtResource( 6 )
+expand = true
+stretch_mode = 6
+
+[node name="Badge" type="ColorRect" parent="Sidebar/Backpack"]
+anchor_left = 1.0
+anchor_right = 1.0
+margin_left = -15.0
+margin_top = -5.0
+margin_right = 5.0
+margin_bottom = 15.0
+mouse_filter = 2
+color = Color( 0.937255, 0.266667, 0.266667, 1 )
+
+[node name="Map" type="ColorRect" parent="Sidebar"]
+material = SubResource( 8 )
+margin_top = 72.0
+margin_right = 60.0
+margin_bottom = 132.0
+rect_min_size = Vector2( 60, 60 )
+
+[node name="Icon" type="TextureRect" parent="Sidebar/Map"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+margin_left = 10.0
+margin_top = 10.0
+margin_right = -10.0
+margin_bottom = -10.0
+mouse_filter = 2
+texture = ExtResource( 7 )
+expand = true
+stretch_mode = 6
+
+[node name="Social" type="ColorRect" parent="Sidebar"]
+material = SubResource( 8 )
+margin_top = 144.0
+margin_right = 60.0
+margin_bottom = 204.0
+rect_min_size = Vector2( 60, 60 )
+
+[node name="Icon" type="TextureRect" parent="Sidebar/Social"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+margin_left = 10.0
+margin_top = 10.0
+margin_right = -10.0
+margin_bottom = -10.0
+mouse_filter = 2
+texture = ExtResource( 8 )
+expand = true
+stretch_mode = 6
+
+[node name="Settings" type="ColorRect" parent="Sidebar"]
+material = SubResource( 8 )
+margin_top = 216.0
+margin_right = 60.0
+margin_bottom = 276.0
+rect_min_size = Vector2( 60, 60 )
+
+[node name="Icon" type="TextureRect" parent="Sidebar/Settings"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+margin_left = 10.0
+margin_top = 10.0
+margin_right = -10.0
+margin_bottom = -10.0
+mouse_filter = 2
+texture = ExtResource( 9 )
+expand = true
+stretch_mode = 6
+
+[node name="MoveJoystickContainer" type="Control" parent="."]
+anchor_top = 1.0
+anchor_bottom = 1.0
+margin_left = 40.0
+margin_top = -220.0
+margin_right = 220.0
+margin_bottom = -40.0
+rect_min_size = Vector2( 180, 180 )
+
+[node name="JoystickWell" type="ColorRect" parent="MoveJoystickContainer"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color( 0, 0, 0, 0.4 )
+
+[node name="Handle" type="ColorRect" parent="MoveJoystickContainer/JoystickWell"]
+material = SubResource( 4 )
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+margin_left = -50.0
+margin_top = -50.0
+margin_right = 50.0
+margin_bottom = 50.0
+rect_pivot_offset = Vector2( 50, 50 )
+
+[node name="CamJoystickContainer" type="Control" parent="."]
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+margin_left = -220.0
+margin_top = -220.0
+margin_right = -40.0
+margin_bottom = -40.0
+rect_min_size = Vector2( 180, 180 )
+
+[node name="JoystickWell" type="ColorRect" parent="CamJoystickContainer"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color( 0, 0, 0, 0.4 )
+
+[node name="Handle" type="ColorRect" parent="CamJoystickContainer/JoystickWell"]
+material = SubResource( 4 )
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+margin_left = -50.0
+margin_top = -50.0
+margin_right = 50.0
+margin_bottom = 50.0
+rect_pivot_offset = Vector2( 50, 50 )
+
+[node name="ActionsContainer" type="Control" parent="."]
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+margin_left = -400.0
+margin_top = -220.0
+margin_right = -240.0
+margin_bottom = -60.0
+mouse_filter = 2
+
+[node name="Fire" type="ColorRect" parent="ActionsContainer"]
+material = SubResource( 4 )
+margin_left = 50.0
+margin_right = 100.0
+margin_bottom = 50.0
+
+[node name="Jump" type="ColorRect" parent="ActionsContainer"]
+material = SubResource( 4 )
+margin_left = 50.0
+margin_top = 100.0
+margin_right = 100.0
+margin_bottom = 150.0
+
+[node name="Magic" type="ColorRect" parent="ActionsContainer"]
+material = SubResource( 4 )
+margin_top = 50.0
+margin_right = 50.0
+margin_bottom = 100.0
+
+[node name="Attack" type="ColorRect" parent="ActionsContainer"]
+material = SubResource( 5 )
+margin_left = 95.0
+margin_top = 45.0
+margin_right = 155.0
+margin_bottom = 105.0
+
+[node name="ShortcutsContainer" type="Control" parent="."]
+anchor_top = 1.0
+anchor_bottom = 1.0
+margin_left = 240.0
+margin_top = -220.0
+margin_right = 400.0
+margin_bottom = -60.0
+mouse_filter = 2
+
+[node name="Bolt" type="ColorRect" parent="ShortcutsContainer"]
+material = SubResource( 4 )
+margin_left = 50.0
+margin_right = 100.0
+margin_bottom = 50.0
+
+[node name="Shield" type="ColorRect" parent="ShortcutsContainer"]
+material = SubResource( 4 )
+margin_left = 50.0
+margin_top = 100.0
+margin_right = 100.0
+margin_bottom = 150.0
+
+[node name="Map" type="ColorRect" parent="ShortcutsContainer"]
+material = SubResource( 4 )
+margin_top = 50.0
+margin_right = 50.0
+margin_bottom = 100.0
+
+[node name="Inv" type="ColorRect" parent="ShortcutsContainer"]
+material = SubResource( 4 )
+margin_left = 100.0
+margin_top = 50.0
+margin_right = 150.0
+margin_bottom = 100.0

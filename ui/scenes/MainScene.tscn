@@ -1,0 +1,42 @@
+[gd_scene load_steps=7 format=2]
+
+[ext_resource path="res://ui/scenes/Player.tscn" type="PackedScene" id=1]
+[ext_resource path="res://ui/scenes/MainHUD.tscn" type="PackedScene" id=2]
+[ext_resource path="res://ui/scripts/WorldManager.gd" type="Script" id=3]
+[ext_resource path="res://ui/scripts/DayNightCycle.gd" type="Script" id=4]
+
+[sub_resource type="PanoramaSky" id=7]
+
+[sub_resource type="Environment" id=5]
+background_mode = 2
+background_sky = SubResource( 7 )
+ambient_light_color = Color( 0.7, 0.7, 0.7, 1 )
+fog_enabled = true
+fog_color = Color( 0.45, 0.55, 0.7, 1 )
+fog_depth_begin = 150.0
+fog_depth_end = 450.0
+tonemap_mode = 2
+glow_enabled = true
+
+[node name="MainScene" type="Spatial"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource( 5 )
+
+[node name="DirectionalLight" type="DirectionalLight" parent="."]
+transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 10, 0 )
+shadow_enabled = true
+directional_shadow_mode = 0
+
+[node name="DayNightCycle" type="Node" parent="."]
+script = ExtResource( 4 )
+
+[node name="WorldManager" type="Spatial" parent="."]
+script = ExtResource( 3 )
+
+[node name="Player" parent="." instance=ExtResource( 1 )]
+transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, 0 )
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="MainHUD" parent="CanvasLayer" instance=ExtResource( 2 )]
