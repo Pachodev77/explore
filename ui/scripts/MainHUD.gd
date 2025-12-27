@@ -2,14 +2,15 @@ extends Control
 
 signal joystick_moved(vector)
 signal camera_moved(vector)
+signal zoom_pressed()
 
 # Joysticks (Ahora en contenedores flotantes sin panel)
 onready var left_joy = $MoveJoystickContainer/JoystickWell/Handle
 onready var right_joy = $CamJoystickContainer/JoystickWell/Handle
 
-var left_center = Vector2(90, 90)
-var right_center = Vector2(90, 90)
-var joy_radius = 50.0
+var left_center = Vector2(120, 120)
+var right_center = Vector2(120, 120)
+var joy_radius = 70.0
 
 var left_touch_index = -1
 var right_touch_index = -1
@@ -23,7 +24,7 @@ onready var buttons = {
 	"bolt": $ShortcutsContainer/Bolt,
 	"shield": $ShortcutsContainer/Shield,
 	"map": $ShortcutsContainer/Map,
-	"inv": $ShortcutsContainer/Inv
+	"zoom": $ShortcutsContainer/Zoom
 }
 
 func _ready():
@@ -35,6 +36,12 @@ func _ready():
 	for btn_name in buttons:
 		var btn = buttons[btn_name]
 		btn.connect("gui_input", self, "_on_button_input", [btn_name])
+	
+	# Forzar escalado de moneda (los contenedores a veces ignoran el tscn)
+	$Header/Currency/Diamonds/H/Icon.rect_min_size = Vector2(36, 36)
+	$Header/Currency/Diamonds/H/Value.rect_scale = Vector2(1.6, 1.6)
+	$Header/Currency/Gold/H/Icon.rect_min_size = Vector2(32, 32)
+	$Header/Currency/Gold/H/Value.rect_scale = Vector2(1.6, 1.6)
 
 func _input(event):
 	var touch_pos = Vector2.ZERO
@@ -91,16 +98,26 @@ func _on_button_input(event, btn_name):
 	if event is InputEventScreenTouch or event is InputEventMouseButton:
 		if event.pressed:
 			animate_button_press(btn)
+			if btn_name == "zoom":
+				emit_signal("zoom_pressed")
 		else:
 			animate_button_release(btn)
 
 func animate_button_press(node):
-	var tween = get_tree().create_tween()
-	tween.tween_property(node, "rect_scale", Vector2(0.92, 0.92), 0.05)
+	var tween = Tween.new()
+	add_child(tween)
+	tween.interpolate_property(node, "rect_scale", node.rect_scale, Vector2(0.92, 0.92), 0.05, Tween.TRANS_LINEAR, Tween.EASE_IN_OUT)
+	tween.start()
+	yield(tween, "tween_completed")
+	tween.queue_free()
 
 func animate_button_release(node):
-	var tween = get_tree().create_tween()
-	tween.tween_property(node, "rect_scale", Vector2(1.0, 1.0), 0.1)
+	var tween = Tween.new()
+	add_child(tween)
+	tween.interpolate_property(node, "rect_scale", node.rect_scale, Vector2(1.0, 1.0), 0.1, Tween.TRANS_LINEAR, Tween.EASE_IN_OUT)
+	tween.start()
+	yield(tween, "tween_completed")
+	tween.queue_free()
 
 func set_health(val_percent):
 	$Header/StatusBars/HealthBarCont/HealthBar.material.set_shader_param("value", val_percent)

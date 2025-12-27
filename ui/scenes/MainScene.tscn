@@ -7,9 +7,60 @@
 
 [sub_resource type="PanoramaSky" id=7]
 
+[sub_resource type="Shader" id=6]
+code = "shader_type sky;
+uniform float time_of_day : hint_range(0.0, 1.0) = 0.5;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+	vec2 i = floor(p); vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	float a = hash(i); float b = hash(i + vec2(1.0, 0.0));
+	float c = hash(i + vec2(0.0, 1.0)); float d = hash(i + vec2(1.0, 1.0));
+	return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+void sky() {
+	vec3 dir = EYEDIR;
+	vec3 day_sky_top = vec3(0.3, 0.5, 0.9);
+	vec3 day_sky_horizon = vec3(0.6, 0.75, 0.95);
+	vec3 night_sky = vec3(0.01, 0.01, 0.05);
+	vec3 sunset_color = vec3(1.0, 0.5, 0.2);
+	float horizon_factor = 1.0 - abs(dir.y);
+	float day_phase = 0.0;
+	if (time_of_day < 0.2 || time_of_day > 0.8) day_phase = 0.0;
+	else if (time_of_day > 0.3 && time_of_day < 0.7) day_phase = 1.0;
+	else if (time_of_day >= 0.2 && time_of_day <= 0.3) day_phase = smoothstep(0.2, 0.3, time_of_day);
+	else day_phase = smoothstep(0.8, 0.7, time_of_day);
+	vec3 day_color = mix(day_sky_top, day_sky_horizon, horizon_factor);
+	float sunset_factor = 0.0;
+	if (time_of_day > 0.2 && time_of_day < 0.35) sunset_factor = sin((time_of_day - 0.2) / 0.15 * 3.14159) * horizon_factor;
+	else if (time_of_day > 0.65 && time_of_day < 0.8) sunset_factor = sin((time_of_day - 0.65) / 0.15 * 3.14159) * horizon_factor;
+	day_color = mix(day_color, sunset_color, sunset_factor * 0.7);
+	vec3 sky_color = mix(night_sky, day_color, day_phase);
+	float star_intensity = 1.0 - day_phase;
+	if (star_intensity > 0.01 && dir.y > 0.0) {
+		float stars = 0.0;
+		vec2 uv1 = vec2(atan(dir.x, dir.z), acos(dir.y)) * 40.0;
+		stars += step(0.97, noise(uv1)) * hash(floor(uv1));
+		vec2 uv2 = vec2(atan(dir.x, dir.z), acos(dir.y)) * 120.0;
+		stars += step(0.95, noise(uv2)) * hash(floor(uv2)) * 0.5;
+		vec2 uv3 = vec2(atan(dir.x, dir.z), acos(dir.y)) * 300.0;
+		stars += step(0.92, noise(uv3)) * hash(floor(uv3)) * 0.2;
+		stars *= 0.8 + 0.2 * sin(TIME * (hash(floor(uv1)) * 2.0 + 1.0) + hash(floor(uv1)) * 100.0);
+		sky_color += vec3(stars) * star_intensity;
+	}
+	COLOR = sky_color;
+}"
+
+[sub_resource type="ShaderMaterial" id=8]
+shader = SubResource( 6 )
+shader_param/time_of_day = 0.5
+
+[sub_resource type="Sky" id=9]
+sky_material = SubResource( 8 )
+
 [sub_resource type="Environment" id=5]
 background_mode = 2
-background_sky = SubResource( 7 )
+background_sky = SubResource( 9 )
 ambient_light_color = Color( 0.7, 0.7, 0.7, 1 )
 fog_enabled = true
 fog_color = Color( 0.45, 0.55, 0.7, 1 )

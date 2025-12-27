@@ -62,19 +62,27 @@ void sky() {
 	// ESTRELLAS (solo de noche)
 	float star_intensity = 1.0 - day_phase;
 	if (star_intensity > 0.01 && dir.y > 0.0) { // Solo en el hemisferio superior
-		// Coordenadas para las estrellas
-		vec2 star_uv = vec2(atan(dir.x, dir.z), acos(dir.y)) * 50.0;
+		// Capas de estrellas para más densidad
+		float stars = 0.0;
 		
-		// Generar estrellas usando ruido
-		float star_field = noise(star_uv);
-		float stars = step(0.98, star_field); // Solo los valores más altos son estrellas
+		// Capa 1: Estrellas grandes y brillantes
+		vec2 uv1 = vec2(atan(dir.x, dir.z), acos(dir.y)) * 40.0;
+		float field1 = noise(uv1);
+		stars += step(0.97, field1) * hash(floor(uv1));
 		
-		// Añadir variación de brillo
-		float star_brightness = hash(floor(star_uv)) * 0.5 + 0.5;
-		stars *= star_brightness;
+		// Capa 2: Estrellas pequeñas y densas
+		vec2 uv2 = vec2(atan(dir.x, dir.z), acos(dir.y)) * 120.0;
+		float field2 = noise(uv2);
+		stars += step(0.95, field2) * hash(floor(uv2)) * 0.5;
 		
-		// Añadir parpadeo sutil
-		stars *= 0.8 + 0.2 * sin(TIME * 2.0 + hash(floor(star_uv)) * 100.0);
+		// Capa 3: Micro-estrellas de fondo
+		vec2 uv3 = vec2(atan(dir.x, dir.z), acos(dir.y)) * 300.0;
+		float field3 = noise(uv3);
+		stars += step(0.92, field3) * hash(floor(uv3)) * 0.2;
+		
+		// Añadir parpadeo sutil con diferentes frecuencias
+		float blink = 0.8 + 0.2 * sin(TIME * (hash(floor(uv1)) * 2.0 + 1.0) + hash(floor(uv1)) * 100.0);
+		stars *= blink;
 		
 		// Aplicar estrellas al cielo
 		sky_color += vec3(stars) * star_intensity;

@@ -28,7 +28,7 @@ shader_param/value = 0.75
 shader_param/color_start = Color( 0.862745, 0.14902, 0.14902, 1 )
 shader_param/color_end = Color( 0.972549, 0.443137, 0.443137, 1 )
 shader_param/bg_color = Color( 0, 0, 0, 0.85 )
-shader_param/aspect_ratio = 32.5
+shader_param/aspect_ratio = 18.0
 
 [sub_resource type="ShaderMaterial" id=3]
 shader = ExtResource( 5 )
@@ -36,7 +36,7 @@ shader_param/value = 0.5
 shader_param/color_start = Color( 0.145098, 0.388235, 0.921569, 1 )
 shader_param/color_end = Color( 0.376471, 0.647059, 0.980392, 1 )
 shader_param/bg_color = Color( 0, 0, 0, 0.85 )
-shader_param/aspect_ratio = 36.66
+shader_param/aspect_ratio = 20.0
 
 [sub_resource type="ShaderMaterial" id=4]
 shader = ExtResource( 4 )
@@ -121,8 +121,8 @@ material = SubResource( 7 )
 anchor_top = 1.0
 anchor_bottom = 1.0
 margin_left = 20.0
-margin_top = -240.0
-margin_right = 420.0
+margin_top = -300.0
+margin_right = 540.0
 margin_bottom = -20.0
 mouse_filter = 2
 __meta__ = {
@@ -135,8 +135,8 @@ anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-margin_left = -420.0
-margin_top = -240.0
+margin_left = -540.0
+margin_top = -300.0
 margin_right = -20.0
 margin_bottom = -20.0
 mouse_filter = 2
@@ -168,59 +168,59 @@ valign = 1
 
 [node name="StatusBars" type="VBoxContainer" parent="Header"]
 margin_left = 80.0
-margin_right = 380.0
-margin_bottom = 60.0
-rect_min_size = Vector2( 300, 0 )
+margin_right = 480.0
+margin_bottom = 100.0
+rect_min_size = Vector2( 400, 0 )
 mouse_filter = 2
 custom_constants/separation = 10
 
 [node name="HealthBarCont" type="HBoxContainer" parent="Header/StatusBars"]
-margin_right = 300.0
-margin_bottom = 20.0
+margin_right = 400.0
+margin_bottom = 32.0
 mouse_filter = 2
-custom_constants/separation = 12
+custom_constants/separation = 15
 
 [node name="Icon" type="TextureRect" parent="Header/StatusBars/HealthBarCont"]
-margin_right = 20.0
-margin_bottom = 20.0
-rect_min_size = Vector2( 20, 20 )
+margin_right = 32.0
+margin_bottom = 32.0
+rect_min_size = Vector2( 32, 32 )
 texture = ExtResource( 10 )
 expand = true
 stretch_mode = 6
 
 [node name="HealthBar" type="ColorRect" parent="Header/StatusBars/HealthBarCont"]
 material = SubResource( 2 )
-margin_left = 32.0
+margin_left = 47.0
 margin_top = 6.0
-margin_right = 292.0
-margin_bottom = 14.0
-rect_min_size = Vector2( 260, 8 )
+margin_right = 397.0
+margin_bottom = 26.0
+rect_min_size = Vector2( 350, 20 )
 size_flags_horizontal = 3
 
 [node name="Fill" type="Node" parent="Header/StatusBars/HealthBarCont/HealthBar"]
 
 [node name="ManaBarCont" type="HBoxContainer" parent="Header/StatusBars"]
-margin_top = 30.0
-margin_right = 300.0
-margin_bottom = 46.0
+margin_top = 47.0
+margin_right = 400.0
+margin_bottom = 75.0
 mouse_filter = 2
-custom_constants/separation = 12
+custom_constants/separation = 15
 
 [node name="Icon" type="TextureRect" parent="Header/StatusBars/ManaBarCont"]
-margin_right = 16.0
-margin_bottom = 16.0
-rect_min_size = Vector2( 16, 16 )
+margin_right = 28.0
+margin_bottom = 28.0
+rect_min_size = Vector2( 28, 28 )
 texture = ExtResource( 11 )
 expand = true
 stretch_mode = 6
 
 [node name="ManaBar" type="ColorRect" parent="Header/StatusBars/ManaBarCont"]
 material = SubResource( 3 )
-margin_left = 28.0
-margin_top = 5.0
-margin_right = 248.0
-margin_bottom = 11.0
-rect_min_size = Vector2( 220, 6 )
+margin_left = 43.0
+margin_top = 6.0
+margin_right = 343.0
+margin_bottom = 21.0
+rect_min_size = Vector2( 300, 15 )
 
 [node name="Fill" type="Node" parent="Header/StatusBars/ManaBarCont/ManaBar"]
 
@@ -235,11 +235,11 @@ custom_constants/separation = 12
 
 [node name="Diamonds" type="ColorRect" parent="Header/Currency"]
 material = SubResource( 9 )
-margin_left = 686.0
-margin_top = 18.0
-margin_right = 760.0
-margin_bottom = 42.0
-rect_min_size = Vector2( 74, 24 )
+margin_left = 630.0
+margin_top = 10.0
+margin_right = 750.0
+margin_bottom = 50.0
+rect_min_size = Vector2( 120, 40 )
 size_flags_vertical = 4
 
 [node name="H" type="HBoxContainer" parent="Header/Currency/Diamonds"]
@@ -253,28 +253,29 @@ custom_constants/separation = 4
 
 [node name="Icon" type="ColorRect" parent="Header/Currency/Diamonds/H"]
 material = SubResource( 11 )
-margin_left = 4.0
+margin_left = 6.0
 margin_top = 4.0
-margin_right = 20.0
-margin_bottom = 20.0
-rect_min_size = Vector2( 16, 16 )
+margin_right = 38.0
+margin_bottom = 36.0
+rect_min_size = Vector2( 32, 32 )
 size_flags_vertical = 4
 
 [node name="Value" type="Label" parent="Header/Currency/Diamonds/H"]
-margin_left = 24.0
-margin_top = 5.0
-margin_right = 52.0
-margin_bottom = 19.0
+margin_left = 42.0
+margin_top = 8.0
+margin_right = 90.0
+margin_bottom = 32.0
+rect_scale = Vector2( 1.4, 1.4 )
 custom_colors/font_color = Color( 0.45098, 0.823529, 1, 1 )
 text = "1250"
 
 [node name="Gold" type="ColorRect" parent="Header/Currency"]
 material = SubResource( 10 )
-margin_left = 772.0
-margin_top = 18.0
-margin_right = 856.0
-margin_bottom = 42.0
-rect_min_size = Vector2( 84, 24 )
+margin_left = 762.0
+margin_top = 10.0
+margin_right = 902.0
+margin_bottom = 50.0
+rect_min_size = Vector2( 140, 40 )
 size_flags_vertical = 4
 
 [node name="H" type="HBoxContainer" parent="Header/Currency/Gold"]
@@ -288,18 +289,19 @@ custom_constants/separation = 4
 
 [node name="Icon" type="ColorRect" parent="Header/Currency/Gold/H"]
 material = SubResource( 12 )
-margin_left = 9.0
-margin_top = 5.0
-margin_right = 23.0
-margin_bottom = 19.0
-rect_min_size = Vector2( 14, 14 )
+margin_left = 8.0
+margin_top = 6.0
+margin_right = 36.0
+margin_bottom = 34.0
+rect_min_size = Vector2( 28, 28 )
 size_flags_vertical = 4
 
 [node name="Value" type="Label" parent="Header/Currency/Gold/H"]
-margin_left = 27.0
-margin_top = 5.0
-margin_right = 62.0
-margin_bottom = 19.0
+margin_left = 42.0
+margin_top = 8.0
+margin_right = 90.0
+margin_bottom = 32.0
+rect_scale = Vector2( 1.4, 1.4 )
 custom_colors/font_color = Color( 1, 0.843137, 0, 1 )
 text = "50400"
 
@@ -307,9 +309,9 @@ text = "50400"
 anchor_top = 0.5
 anchor_bottom = 0.5
 margin_left = 24.0
-margin_top = -180.0
+margin_top = -240.0
 margin_right = 84.0
-margin_bottom = 96.0
+margin_bottom = 36.0
 mouse_filter = 2
 custom_constants/separation = 15
 
@@ -402,10 +404,10 @@ stretch_mode = 6
 anchor_top = 1.0
 anchor_bottom = 1.0
 margin_left = 40.0
-margin_top = -220.0
-margin_right = 220.0
+margin_top = -280.0
+margin_right = 280.0
 margin_bottom = -40.0
-rect_min_size = Vector2( 180, 180 )
+rect_min_size = Vector2( 240, 240 )
 
 [node name="JoystickWell" type="ColorRect" parent="MoveJoystickContainer"]
 anchor_right = 1.0
@@ -418,22 +420,22 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-margin_left = -50.0
-margin_top = -50.0
-margin_right = 50.0
-margin_bottom = 50.0
-rect_pivot_offset = Vector2( 50, 50 )
+margin_left = -65.0
+margin_top = -65.0
+margin_right = 65.0
+margin_bottom = 65.0
+rect_pivot_offset = Vector2( 65, 65 )
 
 [node name="CamJoystickContainer" type="Control" parent="."]
 anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-margin_left = -220.0
-margin_top = -220.0
+margin_left = -280.0
+margin_top = -280.0
 margin_right = -40.0
 margin_bottom = -40.0
-rect_min_size = Vector2( 180, 180 )
+rect_min_size = Vector2( 240, 240 )
 
 [node name="JoystickWell" type="ColorRect" parent="CamJoystickContainer"]
 anchor_right = 1.0
@@ -446,80 +448,87 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-margin_left = -50.0
-margin_top = -50.0
-margin_right = 50.0
-margin_bottom = 50.0
-rect_pivot_offset = Vector2( 50, 50 )
+margin_left = -65.0
+margin_top = -65.0
+margin_right = 65.0
+margin_bottom = 65.0
+rect_pivot_offset = Vector2( 65, 65 )
 
 [node name="ActionsContainer" type="Control" parent="."]
 anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-margin_left = -400.0
-margin_top = -220.0
-margin_right = -240.0
+margin_left = -520.0
+margin_top = -280.0
+margin_right = -320.0
 margin_bottom = -60.0
 mouse_filter = 2
 
 [node name="Fire" type="ColorRect" parent="ActionsContainer"]
 material = SubResource( 4 )
-margin_left = 50.0
-margin_right = 100.0
-margin_bottom = 50.0
+margin_left = 70.0
+margin_right = 140.0
+margin_bottom = 70.0
 
 [node name="Jump" type="ColorRect" parent="ActionsContainer"]
 material = SubResource( 4 )
-margin_left = 50.0
-margin_top = 100.0
-margin_right = 100.0
-margin_bottom = 150.0
+margin_left = 70.0
+margin_top = 140.0
+margin_right = 140.0
+margin_bottom = 210.0
 
 [node name="Magic" type="ColorRect" parent="ActionsContainer"]
 material = SubResource( 4 )
-margin_top = 50.0
-margin_right = 50.0
-margin_bottom = 100.0
+margin_top = 70.0
+margin_right = 70.0
+margin_bottom = 140.0
 
 [node name="Attack" type="ColorRect" parent="ActionsContainer"]
 material = SubResource( 5 )
-margin_left = 95.0
-margin_top = 45.0
-margin_right = 155.0
-margin_bottom = 105.0
+margin_left = 120.0
+margin_top = 55.0
+margin_right = 205.0
+margin_bottom = 140.0
 
 [node name="ShortcutsContainer" type="Control" parent="."]
 anchor_top = 1.0
 anchor_bottom = 1.0
-margin_left = 240.0
-margin_top = -220.0
-margin_right = 400.0
+margin_left = 320.0
+margin_top = -280.0
+margin_right = 540.0
 margin_bottom = -60.0
 mouse_filter = 2
 
 [node name="Bolt" type="ColorRect" parent="ShortcutsContainer"]
 material = SubResource( 4 )
-margin_left = 50.0
-margin_right = 100.0
-margin_bottom = 50.0
+margin_left = 70.0
+margin_right = 140.0
+margin_bottom = 70.0
 
 [node name="Shield" type="ColorRect" parent="ShortcutsContainer"]
 material = SubResource( 4 )
-margin_left = 50.0
-margin_top = 100.0
-margin_right = 100.0
-margin_bottom = 150.0
+margin_left = 70.0
+margin_top = 140.0
+margin_right = 140.0
+margin_bottom = 210.0
+
+[node name="Zoom" type="ColorRect" parent="ShortcutsContainer"]
+material = SubResource( 4 )
+margin_top = 70.0
+margin_right = 70.0
+margin_bottom = 140.0
+
+[node name="Label" type="Label" parent="ShortcutsContainer/Zoom"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+text = "Z"
+align = 1
+valign = 1
 
 [node name="Map" type="ColorRect" parent="ShortcutsContainer"]
 material = SubResource( 4 )
-margin_top = 50.0
-margin_right = 50.0
-margin_bottom = 100.0
-
-[node name="Inv" type="ColorRect" parent="ShortcutsContainer"]
-material = SubResource( 4 )
-margin_left = 100.0
-margin_top = 50.0
-margin_right = 150.0
-margin_bottom = 100.0
+margin_left = 140.0
+margin_top = 70.0
+margin_right = 210.0
+margin_bottom = 140.0
