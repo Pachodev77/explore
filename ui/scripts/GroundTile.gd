@@ -12,11 +12,12 @@ func setup_biome(_dummy_type, shared_resources, _dummy_height = 0):
 	# 2. Deformar y Pesar vértices para el shader
 	deform_and_weight_terrain(shared_resources)
 	
-	# 3. Limpiar (ya no añadimos decos)
+	# 3. Limpiar
 	for child in deco_container.get_children():
 		child.queue_free()
 	
-	# add_decos(shared_resources) # Eliminado para dejar el mapa limpio
+	# 4. Generar Decoraciones Optimizadas
+	add_decos(shared_resources)
 
 func deform_and_weight_terrain(shared_res):
 	var h_noise = shared_res["height_noise"]
@@ -116,45 +117,93 @@ func add_decos(shared_resources):
 	var h_noise = shared_resources["height_noise"]
 	var b_noise = shared_resources["biome_noise"]
 	
-	for i in range(5):
-		var deco = MeshInstance.new()
-		var rand_x = rand_range(-65, 65)
-		var rand_z = rand_range(-65, 65)
-		var gx = translation.x + rand_x
-		var gz = translation.z + rand_z
+	# Configurar MultiMeshes
+	var tree_mms = []
+	for part in shared_resources["tree_parts"]:
+		var mmi = MultiMeshInstance.new()
+		setup_multimesh(mmi, part.mesh, part.mat)
+		tree_mms.append(mmi)
 		
-		var noise_val = b_noise.get_noise_2d(gx, gz)
-		var deg = rad2deg(atan2(gz, gx)) + (noise_val * 45.0)
-		
-		# Para decos seguimos usando un bioma dominante para decidir qué objeto poner
-		var type = get_biome_from_deg(deg)
-		
-		var h_mult = calculate_blended_height(deg, shared_resources)
-		var y_height = h_noise.get_noise_2d(gx, gz) * h_mult
-		
-		var pos = Vector3(rand_x, y_height, rand_z)
-		match type:
-			Biome.DESERT:
-				deco.mesh = shared_resources["cactus_mesh"]
-				deco.material_override = shared_resources["cactus_mat"]
-				deco.scale.y = rand_range(1, 3)
-			Biome.JUNGLE:
-				deco.mesh = shared_resources["tree_mesh"]
-				deco.material_override = shared_resources["tree_mat"]
-				deco.scale = Vector3.ONE * rand_range(0.8, 1.8)
-			Biome.SNOW:
-				deco.mesh = shared_resources["rock_mesh"]
-				deco.material_override = shared_resources["rock_mat"]
-				deco.rotation_degrees.y = rand_range(0, 360)
-				pos.y -= 0.5
-			Biome.PRAIRIE:
-				deco.mesh = shared_resources["bush_mesh"]
-				deco.material_override = shared_resources["bush_mat"]
-				deco.scale = Vector3.ONE * rand_range(1, 2)
-				pos.y -= 0.5
-		
-		deco.translation = pos
-		deco_container.add_child(deco)
+	var cactus_mms = []
+	for part in shared_resources["cactus_parts"]:
+		var mmi = MultiMeshInstance.new()
+		setup_multimesh(mmi, part.mesh, part.mat)
+		cactus_mms.append(mmi)
+	
+	var tree_instances = []
+	var cactus_instances = []
+	
+	# Intentar colocar objetos en una rejilla aleatoria
+	var grid_size = 10
+	var spacing = 150.0 / grid_size
+	
+	for x in range(grid_size):
+		for z in range(grid_size):
+			var rand_off_x = rand_range(-spacing*0.4, spacing*0.4)
+			var rand_off_z = rand_range(-spacing*0.4, spacing*0.4)
+			
+			var lx = (x * spacing) - 75.0 + rand_off_x
+			var lz = (z * spacing) - 75.0 + rand_off_z
+			
+			var gx = translation.x + lx
+			var gz = translation.z + lz
+			
+			var noise_val = b_noise.get_noise_2d(gx, gz)
+			var deg = rad2deg(atan2(gz, gx)) + (noise_val * 45.0)
+			var type = get_biome_from_deg(deg)
+			
+			var h_mult = calculate_blended_height(deg, shared_resources)
+			var y_height = h_noise.get_noise_2d(gx, gz) * h_mult
+			
+			# No spawnear bajo el agua (nivel agua es -8)
+			if y_height < -7.0:
+				continue
+				
+			if type == Biome.JUNGLE and shared_resources["tree_parts"].size() > 0:
+				if randf() < 0.75: # Probabilidad aumentada de árboles para una jungla densa
+					var tf = Transform()
+					tf = tf.rotated(Vector3.RIGHT, deg2rad(-90)) # Corregir orientación "acostado"
+					tf = tf.rotated(Vector3.UP, rand_range(0, TAU))
+					var s = rand_range(0.8, 1.8)
+					tf = tf.scaled(Vector3(s, s, s))
+					tf.origin = Vector3(lx, y_height - 0.2, lz) # Ajuste final a -0.2
+					tree_instances.append(tf)
+			
+			elif type == Biome.DESERT and shared_resources["cactus_parts"].size() > 0:
+				if randf() < 0.04: # Probabilidad muy reducida de cactus
+					var tf = Transform()
+					tf = tf.rotated(Vector3.RIGHT, deg2rad(-90)) # Corregir orientación "acostado"
+					tf = tf.rotated(Vector3.UP, rand_range(0, TAU))
+					var s = rand_range(1.0, 2.5)
+					tf = tf.scaled(Vector3(s, s, s))
+					tf.origin = Vector3(lx, y_height + 2.1, lz) # Offset específico solicitado
+					cactus_instances.append(tf)
+
+	# Aplicar instancias a todos los MMIs de cada objeto
+	for mmi in tree_mms:
+		apply_instances(mmi, tree_instances)
+		if tree_instances.size() > 0:
+			deco_container.add_child(mmi)
+			
+	for mmi in cactus_mms:
+		apply_instances(mmi, cactus_instances)
+		if cactus_instances.size() > 0:
+			deco_container.add_child(mmi)
+
+func setup_multimesh(mmi, mesh, mat):
+	if not mesh: return
+	var mm = MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = mesh
+	mmi.multimesh = mm
+	if mat:
+		mmi.material_override = mat
+
+func apply_instances(mmi, instances):
+	if instances.size() == 0 or not mmi.multimesh: return
+	mmi.multimesh.instance_count = instances.size()
+	for i in range(instances.size()):
+		mmi.multimesh.set_instance_transform(i, instances[i])
 
 func get_biome_from_deg(deg):
 	while deg > 180: deg -= 360

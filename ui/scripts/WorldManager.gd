@@ -22,10 +22,8 @@ const H_PRAIRIE = 2.0
 
 var shared_res = {
 	"ground_mat": ShaderMaterial.new(), # SHADER para todo el suelo
-	"tree_mesh": CylinderMesh.new(),
-	"tree_mat": SpatialMaterial.new(),
-	"cactus_mesh": CubeMesh.new(),
-	"cactus_mat": SpatialMaterial.new(),
+	"tree_parts": [], # Array de {mesh, mat}
+	"cactus_parts": [], # Array de {mesh, mat}
 	"rock_mesh": SphereMesh.new(),
 	"rock_mat": SpatialMaterial.new(),
 	"bush_mesh": CubeMesh.new(),
@@ -81,8 +79,36 @@ func setup_shared_resources():
 	
 	shared_res["ground_mat"].set_shader_param("uv_scale", 0.025)
 	
+	# Cargar Modelos Progresivamente
+	var tree_scene = load("res://ui/tree.glb")
+	if tree_scene:
+		var tree_inst = tree_scene.instance()
+		shared_res["tree_parts"] = find_meshes_recursive(tree_inst)
+		tree_inst.queue_free()
+		
+	var cactus_scene = load("res://ui/cactus.glb")
+	if cactus_scene:
+		var cactus_inst = cactus_scene.instance()
+		shared_res["cactus_parts"] = find_meshes_recursive(cactus_inst)
+		cactus_inst.queue_free()
+
 	# Crear Plano de Agua
 	create_water_plane()
+
+func find_meshes_recursive(node, results = []):
+	if node is MeshInstance:
+		# Capturar material (prioridad: override > surface_material > mesh_default)
+		var mat = node.material_override
+		if not mat:
+			mat = node.get_surface_material(0)
+		if not mat and node.mesh:
+			mat = node.mesh.surface_get_material(0)
+			
+		results.append({"mesh": node.mesh, "mat": mat})
+		
+	for child in node.get_children():
+		find_meshes_recursive(child, results)
+	return results
 
 func create_water_plane():
 	var water_mesh = MeshInstance.new()
