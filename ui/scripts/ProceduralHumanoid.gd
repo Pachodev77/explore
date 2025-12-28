@@ -12,12 +12,16 @@ var body_materials = {
 	"Neck": null,
 	"Hips": null,
 	"Abdomen": null,
+	"Hair": null,
+	"Eyes": null,
+	"Mouth": null,
 	"Shoulders": null,
 	"UpperArms": null,
 	"LowerArms": null,
 	"UpperLegs": null,
 	"LowerLegs": null,
-	"Feet": null
+	"Feet": null,
+	"Hands": null
 }
 
 func _ready():
@@ -31,12 +35,16 @@ func _setup_materials():
 		"Neck": ["Neck"],
 		"Hips": ["Hips"],
 		"Abdomen": ["Spine", "Spine2"],
+		"Hair": ["Head"],
+		"Eyes": ["Head"],
+		"Mouth": ["Head"],
 		"Shoulders": ["ShoulderL", "ShoulderR"],
 		"UpperArms": ["UpperArmL", "UpperArmR"],
 		"LowerArms": ["LowerArmL", "LowerArmR"],
 		"UpperLegs": ["UpperLegL", "UpperLegR"],
 		"LowerLegs": ["LowerLegL", "LowerLegR"],
-		"Feet": ["FootL", "FootR"]
+		"Feet": ["FootL", "FootR"],
+		"Hands": ["HandL", "HandR"]
 	}
 	
 	for group_name in part_groups.keys():
@@ -89,6 +97,7 @@ func _generate_rig():
 		var ul = "UpperLeg"+side; _add_bone(ul, bone_ids["Hips"], Vector3(0.11*sm, -0.05, 0))
 		var ll = "LowerLeg"+side; _add_bone(ll, bone_ids[ul], Vector3(0, -0.35, 0))
 		var ft = "Foot"+side; _add_bone(ft, bone_ids[ll], Vector3(0, -0.5, 0)) # Pivote en el tobillo
+		var hnd = "Hand"+side; _add_bone(hnd, bone_ids[la], Vector3(0, -0.22, 0)) # Pivote en la muñeca
 
 func _add_bone(name, parent, rest):
 	skel_node.add_bone(name)
@@ -110,7 +119,17 @@ func _generate_skinned_mesh():
 			["Spine2", Vector3(0, 1.3, 0), Vector3(0.24, 0.25, 0.2)]
 		],
 		"Head": [
-			["Head", Vector3(0, 1.75, 0), Vector3(0.16, 0.18, 0.16)]
+			["Head", Vector3(0, 1.75, 0.02), Vector3(0.13, 0.19, 0.15)]
+		],
+		"Eyes": [
+			["Head", Vector3(0.04, 1.8, 0.16), Vector3(0.015, 0.015, 0.01)], # Ojo R
+			["Head", Vector3(-0.04, 1.8, 0.16), Vector3(0.015, 0.015, 0.01)] # Ojo L
+		],
+		"Mouth": [
+			["Head", Vector3(0, 1.7, 0.16), Vector3(0.03, 0.01, 0.01)]
+		],
+		"Hair": [
+			["Head", Vector3(0, 1.82, -0.02), Vector3(0.15, 0.18, 0.16)]
 		],
 		"Neck": [
 			["Neck", Vector3(0, 1.55, 0), Vector3(0.06, 0.25, 0.06)]
@@ -120,7 +139,8 @@ func _generate_skinned_mesh():
 		"LowerArms": [],
 		"UpperLegs": [],
 		"LowerLegs": [],
-		"Feet": []
+		"Feet": [],
+		"Hands": []
 	}
 	
 	for side in ["L", "R"]:
@@ -128,6 +148,7 @@ func _generate_skinned_mesh():
 		groups["Shoulders"].append(["Shoulder"+side, Vector3(0.21*sm, 1.4, 0), Vector3(0.09, 0.09, 0.09)])
 		groups["UpperArms"].append(["UpperArm"+side, Vector3(0.24*sm, 1.23, 0), Vector3(0.08, 0.2, 0.08)])
 		groups["LowerArms"].append(["LowerArm"+side, Vector3(0.26*sm, 1.05, 0), Vector3(0.07, 0.2, 0.07)])
+		groups["Hands"].append(["Hand"+side, Vector3(0.28*sm, 0.85, 0), Vector3(0.04, 0.07, 0.035)])
 		
 		groups["UpperLegs"].append(["UpperLeg"+side, Vector3(0.11*sm, 0.75, 0), Vector3(0.11, 0.2, 0.11)])
 		groups["LowerLegs"].append(["LowerLeg"+side, Vector3(0.11*sm, 0.35, 0), Vector3(0.09, 0.3, 0.09)])
@@ -137,8 +158,8 @@ func _generate_skinned_mesh():
 		groups["Feet"].append(["Foot"+side, Vector3(0.11*sm, 0.036, 0.1), Vector3(0.09, 0.12, 0.18)])
 
 	var sphere = SphereMesh.new()
-	sphere.radial_segments = 12
-	sphere.rings = 8
+	sphere.radial_segments = 64
+	sphere.rings = 48
 	var sphere_arrays = sphere.get_mesh_arrays()
 	
 	for group_name in groups.keys():
@@ -165,18 +186,43 @@ func _generate_skinned_mesh():
 			var p_indices = sphere_arrays[Mesh.ARRAY_INDEX]
 			
 			var is_foot = b_name.begins_with("Foot")
+			var is_head = b_name.begins_with("Head")
 			
 			for i in range(p_verts.size()):
-				var v = p_verts[i]
-				var n = p_norms[i]
+				var v_orig = p_verts[i] # La esfera unitaria (-1 a 1)
+				var v = v_orig
 				
-				# Aplicar escalado
+				# 1. DEFORMACIÓN ANATÓMICA (CABEZA HUMANA)
+				if is_head:
+					# Estrechar la mandíbula (Y bajo) y ensanchar sutilmente la parte superior
+					var taper = 1.0
+					if v_orig.y < 0:
+						taper = lerp(0.65, 1.0, (v_orig.y + 1.0) / 1.0)
+					else:
+						taper = lerp(1.0, 0.9, v_orig.y) # Ensanchar/estabilizar cráneo
+					
+					v.x *= taper
+					v.z *= (taper * 1.1) if v_orig.z > 0 else taper # Un poco más de volumen facial
+				
+				# 2. ESCALADO
 				v.x *= size.x; v.y *= size.y; v.z *= size.z
 				
-				# Aplanar la suela si es un pie (Corte más agresivo al 30% inferior)
+				# 3. CÁLCULO DE NORMAL DE ELIPSOIDE CORRECTA
+				# La normal de un elipsoide (x/a)^2 + (y/b)^2 + (z/c)^2 = 1 es (x/a^2, y/b^2, z/c^2)
+				var n = Vector3(v_orig.x / size.x, v_orig.y / size.y, v_orig.z / size.z).normalized()
+				
+				# 4. NORMAL BENDING (DOBLADO DE NORMALES EN LOS POLOS)
+				# Esto suaviza la iluminación en las juntas donde las piezas se cortan o intersecan
+				var pole_factor = abs(v_orig.y) # 0 en ecuador, 1 en polos
+				if pole_factor > 0.7:
+					var blend = (pole_factor - 0.7) / 0.3
+					var target_n = Vector3(0, 1.0 if v_orig.y > 0 else -1.0, 0)
+					n = n.linear_interpolate(target_n, blend * 0.8).normalized()
+				
+				# 5. APLANAR LA SUELA (SOLO PIES)
 				if is_foot and v.y < -size.y * 0.3:
 					v.y = -size.y * 0.3
-					n = Vector3(0, -1, 0) # Normal hacia abajo para la suela
+					n = Vector3(0, -1, 0)
 				
 				v += center
 				verts.append(v)

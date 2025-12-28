@@ -22,12 +22,14 @@ void fragment() {
     ALBEDO = (skin_color.rgb * tex_color.rgb) - detail;
     ROUGHNESS = roughness + detail * 2.0;
     
-    // Aproximación de SSS (Subsurface Scattering)
-    // El efecto se nota más cuando la luz viene de atrás
-    float fresnel = pow(1.0 - dot(NORMAL, VIEW), 3.0);
-    vec3 sss_color = vec3(1.0, 0.2, 0.1) * sss_strength;
-    EMISSION = sss_color * fresnel * 0.2;
-    
     // Suavizado de normales para look orgánico
     NORMAL = normalize(NORMAL);
+    
+    // Aproximación de SSS (Subsurface Scattering) refinada
+    // El efecto se nota más cuando la luz viene de atrás o en los bordes
+    float fresnel = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 4.0);
+    vec3 sss_color = vec3(1.0, 0.2, 0.1) * sss_strength;
+    
+    // Difuminado de bordes para ocultar intersecciones
+    EMISSION = sss_color * fresnel * 0.3;
 }
