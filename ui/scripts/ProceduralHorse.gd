@@ -153,7 +153,7 @@ func _create_part_mesh(parent: Node, p_name: String, pos: Vector3, p_scale: Vect
 		var d = dir.normalized()
 		_add_capsule_oriented(st, -dir*0.5, dir*0.5, p_scale.x)
 	elif type == "tapered":
-		_add_tapered_box_oriented(st, -dir*hu*0.4, dir*hu*0.4, p_scale.x, p_scale.y)
+		_add_tapered_cylinder_oriented(st, -dir*hu*0.4, dir*hu*0.4, p_scale.x, p_scale.y)
 
 	st.generate_normals()
 	mi.mesh = st.commit()
@@ -162,7 +162,7 @@ func _create_part_mesh(parent: Node, p_name: String, pos: Vector3, p_scale: Vect
 # --- HELPERS MEJORADOS (LOCALES) ---
 
 func _add_ellipsoid(st, center, scale):
-	var steps = 12 # Bajamos un poco para performance de muchas partes
+	var steps = 16 # Aumentado para mayor suavidad (de 12)
 	for i in range(steps):
 		var lat = PI * i / steps
 		for j in range(steps * 2):
@@ -178,30 +178,67 @@ func _spherical(lat, lon):
 	return Vector3(sin(lat) * cos(lon), cos(lat), sin(lat) * sin(lon))
 
 func _add_capsule_oriented(st, p1, p2, r):
-	_add_ellipsoid(st, p1, Vector3(r,r,r))
-	_add_ellipsoid(st, p2, Vector3(r,r,r))
-	_add_box_between(st, p1, p2, r)
+	# Aumentar radio de uniones 5% para ocultar costuras
+	var r_joint = r * 1.05
+	_add_ellipsoid(st, p1, Vector3(r_joint, r_joint, r_joint))
+	_add_ellipsoid(st, p2, Vector3(r_joint, r_joint, r_joint))
+	
+	# Usar cilindro en vez de caja para que sea redondo
+	_add_cylinder_between(st, p1, p2, r)
 
-func _add_box_between(st, p1, p2, w):
+func _add_cylinder_between(st, p1, p2, r):
 	var dir = (p2 - p1).normalized()
-	var right = dir.cross(Vector3.UP).normalized()
+	# Crear base ortonormal
+	var up = dir
+	var right = up.cross(Vector3.UP).normalized()
 	if right.length() < 0.01: right = Vector3.RIGHT
-	var up = dir.cross(right).normalized()
-	var corners = [right+up, right-up, -right-up, -right+up]
-	for i in range(4):
-		var n1 = corners[i] * w; var n2 = corners[(i+1)%4] * w
-		st.add_vertex(p1+n1); st.add_vertex(p1+n2); st.add_vertex(p2+n1)
-		st.add_vertex(p2+n1); st.add_vertex(p1+n2); st.add_vertex(p2+n2)
+	var forward = right.cross(up).normalized()
+	
+	var steps = 16 # Coincidir con la resolución del elipsoide
+	for i in range(steps * 2):
+		var angle = 2 * PI * i / (steps * 2)
+		var angle_next = 2 * PI * (i + 1) / (steps * 2)
+		
+		# Calcular desplazamiento radial
+		var offset = (right * cos(angle) + forward * sin(angle)) * r
+		var offset_next = (right * cos(angle_next) + forward * sin(angle_next)) * r
+		
+		var v1 = p1 + offset
+		var v2 = p1 + offset_next
+		var v3 = p2 + offset
+		var v4 = p2 + offset_next
+		
+		st.add_vertex(v1); st.add_vertex(v3); st.add_vertex(v2)
+		st.add_vertex(v2); st.add_vertex(v3); st.add_vertex(v4)
 
-func _add_tapered_box_oriented(st, p1, p2, w1, w2):
+func _add_tapered_cylinder_oriented(st, p1, p2, r1, r2):
+	# Safety: Validate radius parameters
+	if r1 == null or r2 == null:
+		push_error("ProceduralHorse: null radius in _add_tapered_cylinder_oriented")
+		return
+	
 	var dir = (p2 - p1).normalized()
-	var right = dir.cross(Vector3.UP).normalized()
+	var up = dir
+	var right = up.cross(Vector3.UP).normalized()
 	if right.length() < 0.01: right = Vector3.RIGHT
-	var up = dir.cross(right).normalized()
-	var corners = [right+up, right-up, -right-up, -right+up]
-	for i in range(4):
-		var n1 = corners[i] * w1; var n2 = corners[(i+1)%4] * w1
-		var m1 = corners[i] * w2; var m2 = corners[(i+1)%4] * w2
-		st.add_vertex(p1+n1); st.add_vertex(p1+n2); st.add_vertex(p2+m1)
-		st.add_vertex(p2+m1); st.add_vertex(p1+n2); st.add_vertex(p2+m2)
+	var forward = right.cross(up).normalized()
+	
+	var steps = 16 
+	for i in range(steps * 2):
+		var angle = 2 * PI * i / (steps * 2)
+		var angle_next = 2 * PI * (i + 1) / (steps * 2)
+		
+		var offset1 = (right * cos(angle) + forward * sin(angle)) * r1
+		var offset1_next = (right * cos(angle_next) + forward * sin(angle_next)) * r1
+		
+		var offset2 = (right * cos(angle) + forward * sin(angle)) * r2
+		var offset2_next = (right * cos(angle_next) + forward * sin(angle_next)) * r2
+		
+		var v1 = p1 + offset1
+		var v2 = p1 + offset1_next
+		var v3 = p2 + offset2
+		var v4 = p2 + offset2_next
+		
+		st.add_vertex(v1); st.add_vertex(v3); st.add_vertex(v2)
+		st.add_vertex(v2); st.add_vertex(v3); st.add_vertex(v4)
 

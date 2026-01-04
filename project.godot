@@ -24,6 +24,10 @@ config/name="Juego1"
 run/main_scene="res://ui/scenes/Main3D.tscn"
 config/icon="res://ui/icons/inventory.jpg"
 
+[autoload]
+
+InventoryManager="*res://ui/scripts/InventoryManager.gd"
+
 [gui]
 
 common/drop_mouse_on_gui_input_disabled=true

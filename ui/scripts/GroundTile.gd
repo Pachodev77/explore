@@ -192,6 +192,41 @@ func _add_gate(container, pos, rot_deg):
 	sign_board.translation = pos + Vector3(0, 5.5, 0) # Colgando en 5.5m
 	container.add_child(sign_board)
 
+	# --- COLISIONES INVISIBLES DE LA VALLA ---
+	_add_fence_collisions(container)
+
+func _add_fence_collisions(container):
+	var half = 33.0
+	var height = 3.0
+	var thickness = 1.0
+	var y_center = 2.0 + height/2.0
+	
+	# Norte (Z = -33) - Completo (-33 a 33 en X)
+	_add_col_box(container, Vector3(0, y_center, -half), Vector3(half*2, height, thickness))
+	
+	# Sur (Z = 33) - Completo
+	_add_col_box(container, Vector3(0, y_center, half), Vector3(half*2, height, thickness))
+	
+	# Oeste (X = -33) - Con hueco en Z (-6 a 6)
+	# Muro 1: Z < -6 (De -33 a -6 -> Centro -19.5, Largo 27)
+	_add_col_box(container, Vector3(-half, y_center, -19.5), Vector3(thickness, height, 27.0))
+	# Muro 2: Z > 6 (De 6 a 33 -> Centro 19.5, Largo 27)
+	_add_col_box(container, Vector3(-half, y_center, 19.5), Vector3(thickness, height, 27.0))
+	
+	# Este (X = 33) - Con hueco en Z (-6 a 6)
+	_add_col_box(container, Vector3(half, y_center, -19.5), Vector3(thickness, height, 27.0))
+	_add_col_box(container, Vector3(half, y_center, 19.5), Vector3(thickness, height, 27.0))
+
+func _add_col_box(parent, pos, size):
+	var sb = StaticBody.new()
+	var cs = CollisionShape.new()
+	var shape = BoxShape.new()
+	shape.extents = size * 0.5
+	cs.shape = shape
+	sb.add_child(cs)
+	sb.translation = pos
+	parent.add_child(sb)
+
 
 func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn):
 	var st = SurfaceTool.new()

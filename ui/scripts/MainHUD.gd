@@ -55,14 +55,25 @@ func _ready():
 	left_joy.rect_position = left_center - left_joy.rect_size / 2
 	right_joy.rect_position = right_center - right_joy.rect_size / 2
 	
+	# FIX: Los contenedores padre bloquean input si se solapan. Ponerlos en IGNORE.
+	# Solo los hijos interactivos (botones, joysticks) deben capturar input.
+	$MoveJoystickContainer.mouse_filter = MOUSE_FILTER_IGNORE
+	$CamJoystickContainer.mouse_filter = MOUSE_FILTER_IGNORE
+	$ActionsContainer.mouse_filter = MOUSE_FILTER_IGNORE
+	$ShortcutsContainer.mouse_filter = MOUSE_FILTER_IGNORE
+	$Header.mouse_filter = MOUSE_FILTER_IGNORE
+	
 	# Conectar eventos de botones de acción
 	for btn_name in buttons:
 		var btn = buttons[btn_name]
+		# FIX: Asegurar que el botón capture input (0 = STOP)
+		btn.mouse_filter = 0 
 		btn.connect("gui_input", self, "_on_button_input", [btn_name])
 	
 	# Conectar eventos de botones de la barra lateral
 	for btn_name in sidebar_buttons:
 		var btn = sidebar_buttons[btn_name]
+		btn.mouse_filter = 0
 		btn.connect("gui_input", self, "_on_sidebar_button_input", [btn_name])
 	
 	# Forzar escalado de moneda (los contenedores a veces ignoran el tscn)
@@ -70,6 +81,36 @@ func _ready():
 	$Header/Currency/Diamonds/H/Value.rect_scale = Vector2(1.6, 1.6)
 	$Header/Currency/Gold/H/Icon.rect_min_size = Vector2(32, 32)
 	$Header/Currency/Gold/H/Value.rect_scale = Vector2(1.6, 1.6)
+	
+	_style_buttons()
+
+func _style_buttons():
+	# Crear materiales programáticamente para asegurar consistencia
+	var mat_red = ShaderMaterial.new()
+	mat_red.shader = load("res://ui/shaders/console_button.shader")
+	mat_red.set_shader_param("color_top", Color(0.93, 0.27, 0.27))
+	mat_red.set_shader_param("color_bottom", Color(0.6, 0.1, 0.1))
+	mat_red.set_shader_param("corner_radius", 0.5)
+	
+	var mat_blue = ShaderMaterial.new()
+	mat_blue.shader = load("res://ui/shaders/console_button.shader")
+	mat_blue.set_shader_param("color_top", Color(0.26, 0.6, 1.0))
+	mat_blue.set_shader_param("color_bottom", Color(0.06, 0.09, 0.16))
+	mat_blue.set_shader_param("corner_radius", 0.5)
+	
+	# Aplicar a botones derechos (ROJO)
+	for b in ["jump", "magic", "attack", "mount"]:
+		if buttons.has(b): buttons[b].material = mat_red
+	
+	# Joystick Derecho (Rojo)
+	if right_joy: right_joy.material = mat_red
+		
+	# Aplicar a botones izquierdos (AZUL)
+	for b in ["bolt", "shield", "map", "zoom"]:
+		if buttons.has(b): buttons[b].material = mat_blue
+	
+	# Joystick Izquierdo (Azul)
+	if left_joy: left_joy.material = mat_blue
 
 func _input(event):
 	var touch_pos = Vector2.ZERO
@@ -121,10 +162,18 @@ func reset_joy(joy_node, center_local, signal_name):
 	joy_node.rect_position = center_local - joy_node.rect_size / 2
 	emit_signal(signal_name, Vector2.ZERO)
 
+var last_press_time = 0
+
 func _on_button_input(event, btn_name):
 	var btn = buttons[btn_name]
 	if event is InputEventScreenTouch or event is InputEventMouseButton:
 		if event.pressed:
+			# DEBOUNCE: Evitar doble input (Touch + Mouse Emulado)
+			var now = OS.get_ticks_msec()
+			if now - last_press_time < 150:
+				return
+			last_press_time = now
+			
 			animate_button_press(btn)
 			if btn_name == "zoom":
 				emit_signal("zoom_pressed")

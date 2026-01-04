@@ -109,6 +109,12 @@ func setup_shared_resources():
 		var cactus_inst = cactus_scene.instance()
 		shared_res["cactus_parts"] = find_meshes_recursive(cactus_inst)
 		cactus_inst.queue_free()
+		
+		# FIX: Desactivar emisión en materiales importados del cactus
+		for part in shared_res["cactus_parts"]:
+			if part and part.has("mat") and part.mat and part.mat is SpatialMaterial:
+				part.mat.emission_enabled = false
+				part.mat.flags_unshaded = false # Asegurar que reaccione a luz
 
 	create_water_plane()
 

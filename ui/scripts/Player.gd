@@ -1,7 +1,7 @@
 extends KinematicBody
 
-export var speed = 6.0
-export var rotation_speed = 2.0
+export(float) var speed = 6.0
+export(float) var rotation_speed = 2.0
 var velocity = Vector3.ZERO
 var move_dir = Vector2.ZERO
 var look_dir = Vector2.ZERO
@@ -13,7 +13,10 @@ var current_camera_state = CameraState.FAR
 onready var camera_pivot = $CameraPivot
 
 func _ready():
-	# translation.y = 60.0 # REMOVED: Managed by WorldManager
+	# Safety Check for exported variables
+	if not speed: speed = 6.0
+	if not rotation_speed: rotation_speed = 2.0
+
 	# ------------------------------------------------------------------
 	# HUD CONNECTION
 	# ------------------------------------------------------------------
@@ -46,10 +49,9 @@ func _init_reins():
 		reins_line = ImmediateGeometry.new()
 		reins_line.name = "ReinsLine"
 		var m = SpatialMaterial.new()
-		m.albedo_color = Color(0.3, 0.2, 0.1) # Cuero marrón
-		m.flags_unshaded = true # Visible siempre
-		# params_line_width solo funciona en GLES2 o con flags específicos, 
-		# pero ImmediateGeometry dibuja líneas finas por defecto.
+		m.albedo_color = Color(0.5, 0.35, 0.2) # Cuero más claro y visible
+		m.flags_unshaded = true 
+		m.params_cull_mode = SpatialMaterial.CULL_DISABLED # Ver por ambos lados
 		reins_line.material_override = m
 		add_child(reins_line)
 
@@ -61,46 +63,95 @@ func _process(_delta):
 
 func _draw_reins():
 	reins_line.clear()
-	reins_line.begin(Mesh.PRIMITIVE_LINE_STRIP)
 	
-	# 1. Punto de origen: Promedio de las Manos del jugador
-	# Estimación base: Frente al ombligo
-	var hand_pos = global_transform.origin + Vector3(0, 1.05, 0.4).rotated(Vector3.UP, rotation.y)
+	# 1. Obtener posiciones de AMBAS manos
+	var origin_base = global_transform.origin
+	var rot_y = rotation.y
+	var p_l = origin_base + Vector3(-0.3, 1.05, 0.4).rotated(Vector3.UP, rot_y)
+	var p_r = origin_base + Vector3(0.3, 1.05, 0.4).rotated(Vector3.UP, rot_y)
 	
 	if $MeshInstance.get("skel_node"):
 		var skel = $MeshInstance.skel_node
 		var h_l = skel.find_bone("HandL")
 		var h_r = skel.find_bone("HandR")
-		if h_l != -1 and h_r != -1:
-			var p_l = skel.global_transform.xform(skel.get_bone_global_pose(h_l).origin)
-			var p_r = skel.global_transform.xform(skel.get_bone_global_pose(h_r).origin)
-			hand_pos = (p_l + p_r) * 0.5
+		if h_l != -1:
+			var hand_tf = skel.get_bone_global_pose(h_l)
+			# Offset -0.15 en Y local (hacia los dedos)
+			p_l = skel.global_transform.xform(hand_tf.xform(Vector3(0, -0.15, 0)))
+		if h_r != -1:
+			var hand_tf = skel.get_bone_global_pose(h_r)
+			p_r = skel.global_transform.xform(hand_tf.xform(Vector3(0, -0.15, 0)))
 
-	# 2. Punto destino: Boca del caballo (Nodo ReinAnchor)
-	# IMPORTANTE: La ruta incluye ProceduralMesh
-	var mouth_pos = current_horse.global_transform.origin + Vector3(0, 1.5, 0.8) # Fallback
+	# 2. Punto destino CENTRAL: Boca del caballo
+	var mouth_center = current_horse.global_transform.origin + Vector3(0, 1.5, 0.8) 
 	var anchor_path = "ProceduralMesh/BodyRoot/NeckBase/NeckMid/Head/ReinAnchor"
 	if current_horse.has_node(anchor_path):
-		mouth_pos = current_horse.get_node(anchor_path).global_transform.origin
+		var anchor = current_horse.get_node(anchor_path)
+		mouth_center = anchor.global_transform.origin
 	elif current_horse.has_node("ProceduralMesh"):
-		# Intento de búsqueda relativa si la estructura varió
 		var pm = current_horse.get_node("ProceduralMesh")
 		var anchor = pm.find_node("ReinAnchor", true, false)
 		if anchor:
-			mouth_pos = anchor.global_transform.origin
+			mouth_center = anchor.global_transform.origin
+			
+	# 3. Separar puntos en la boca para evitar que se vean juntas
+	var horse_right = current_horse.global_transform.basis.x.normalized()
+	if horse_right.length_squared() < 0.01: horse_right = Vector3.RIGHT
 	
-	# 3. Dibujar Curva (Bosal slack)
-	var mid_point = (hand_pos + mouth_pos) * 0.5
-	mid_point.y -= 0.35 # Más comba para parecer una cuerda suelta de bosal
+	var spread = 0.12
+	var m_l = mouth_center - horse_right * spread
+	var m_r = mouth_center + horse_right * spread
 	
-	for i in range(11):
-		var t = i / 10.0
-		var q0 = hand_pos.linear_interpolate(mid_point, t)
-		var q1 = mid_point.linear_interpolate(mouth_pos, t)
-		var p = q0.linear_interpolate(q1, t)
-		reins_line.add_vertex(reins_line.to_local(p))
+	# Usar LINE_STRIP con múltiples pasadas
+	# (Nota: _draw_rein_curve_thick ya hace begin/end internamente)
 	
-	reins_line.end()
+	# Detectar cruce (Auto-Uncross)
+	# Calculamos distancia total en asignación directa vs cruzada
+	var dist_straight = p_l.distance_squared_to(m_l) + p_r.distance_squared_to(m_r)
+	var dist_crossed = p_l.distance_squared_to(m_r) + p_r.distance_squared_to(m_l)
+	
+	# Si cruzar es más corto, significa que "m_l" está físicamente más cerca de la mano derecha
+	# (posiblemente por rotación extrema o ejes invertidos). 
+	# Para NO tener "X", elegimos la configuración de menor longitud visual general.
+	if dist_straight < dist_crossed:
+		# Directo: L->L, R->R
+		_draw_rein_curve_thick(p_l, m_l)
+		_draw_rein_curve_thick(p_r, m_r)
+	else:
+		# Cruzado (Swap para desenredar): L->R_point, R->L_point
+		_draw_rein_curve_thick(p_l, m_r)
+		_draw_rein_curve_thick(p_r, m_l)
+
+func _draw_rein_curve_thick(start_pos, end_pos):
+	# Simular grosor dibujando varias líneas ligeramente desplazadas
+	# Offsets para crear un "tubo" cuadrado de 3cm aprox
+	var offsets = [
+		Vector3.ZERO, 
+		Vector3(0, 0.015, 0), Vector3(0, -0.015, 0), 
+		Vector3(0.015, 0, 0), Vector3(-0.015, 0, 0)
+	]
+	
+	var mid_point = (start_pos + end_pos) * 0.5
+	mid_point.y -= 0.45 
+	
+	var steps = 10
+	
+	for offset in offsets:
+		# Girar el offset según la dirección de la cuerda sería ideal, 
+		# pero usar offset de mundo es más barato y suficiente para líneas finas.
+		reins_line.begin(Mesh.PRIMITIVE_LINE_STRIP)
+		
+		for i in range(steps + 1):
+			var t = float(i) / steps
+			var q0 = start_pos.linear_interpolate(mid_point, t)
+			var q1 = mid_point.linear_interpolate(end_pos, t)
+			var p = q0.linear_interpolate(q1, t)
+			
+			# Aplicar offset (simple world space offset)
+			reins_line.add_vertex(reins_line.to_local(p + offset))
+		
+		reins_line.end()
+
 
 func _on_mount_pressed():
 	if is_riding:
