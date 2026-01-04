@@ -68,15 +68,15 @@ func _ready():
 		for z in range(int(p_coords.y) - 1, int(p_coords.y) + 2):
 			spawn_tile(x, z)
 	
-	# Colocar al jugador a salvo por encima de las montañas
-	player.translation.y = 60.0
+	# Colocar al jugador a salvo ligeramente por encima del suelo
+	player.translation.y = 2.0
 	
 	# SPAWN CABALLO DE PRUEBA
 	var horse_scene = load("res://ui/scenes/Horse.tscn")
 	if horse_scene:
 		var horse = horse_scene.instance()
 		add_child(horse)
-		horse.translation = Vector3(10, 60, -10) # Cerca del jugador (que empieza en 0,60,0)
+		horse.translation = Vector3(10, 2.5, -10) # Cerca del jugador, elevado a 2.5 para evitar hundimiento
 	
 	last_player_tile = p_coords
 	update_tiles()
@@ -211,6 +211,8 @@ func spawn_tile(x, z):
 	var tile = tile_scene.instance()
 	tile.translation = Vector3(x * tile_size, 0, z * tile_size)
 	add_child(tile)
+	
+	var is_spawn = (x == 0 and z == 0)
 	if tile.has_method("setup_biome"):
-		tile.setup_biome(0, shared_res)
+		tile.setup_biome(0, shared_res, 0, is_spawn)
 	active_tiles[key] = tile

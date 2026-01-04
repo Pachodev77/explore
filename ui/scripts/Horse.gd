@@ -26,6 +26,8 @@ func _ready():
 	# Inicializar mesh si no está hecho
 	if mesh_gen and mesh_gen.has_method("_generate_structure"):
 		mesh_gen._generate_structure()
+		# AJUSTE VISUAL: Subir el mesh para que no parezca hundido en el suelo
+		mesh_gen.translation.y = 0.3
 
 func _physics_process(delta):
 	# Gravedad
@@ -48,7 +50,8 @@ func _update_animation(delta):
 	var horizontal_speed = Vector3(velocity.x, 0, velocity.z).length()
 	if horizontal_speed > 0.5:
 		# Animación más pausada: Reducimos la frecuencia base y el multiplicador
-		var freq = 1.2 + (horizontal_speed / speed) * 1.0 
+		# Antes: 1.2 + ... * 1.0. Ahora es más lento.
+		var freq = 0.8 + (horizontal_speed / speed) * 0.6 
 		anim_phase = wrapf(anim_phase + freq * delta, 0.0, 1.0)
 		_animate_gallop(anim_phase)
 	else:
@@ -64,7 +67,7 @@ func _animate_gallop(p):
 	
 	# 1. Cuerpo (Dinámica de Carrera)
 	# Reducimos la inclinación frontal (forward_lean) para sea más natural
-	var forward_lean = -0.06 * speed_ratio 
+	var forward_lean = 0.0 # Eliminado: no inclinarse hacia adelante
 	anim_bounce = abs(sin(p * TAU)) * 0.12 * speed_ratio
 	anim_pitch = cos(p * TAU) * 0.1 * speed_ratio + forward_lean
 	
@@ -72,9 +75,10 @@ func _animate_gallop(p):
 		p_nodes.body.translation.y = (mesh_gen.hu * 2.2) + anim_bounce
 		p_nodes.body.rotation.x = anim_pitch
 		
-	# 2. Patas (Articulación Avanzada con Sesgo Frontal)
-	# Tiempos: BL (0.0), BR (0.2), FL (0.5), FR (0.7)
-	var offsets = {"bl": 0.0, "br": 0.2, "fl": 0.5, "fr": 0.7}
+	# 2. Patas (Articulación Avanzada)
+	# Tiempos: Cambiamos a un ritmo de "Trote" o "Walk" más estable visualmente
+	# Diagonal pairs: (BL, FR) y (BR, FL)
+	var offsets = {"bl": 0.0, "fr": 0.1, "br": 0.5, "fl": 0.6}
 	
 	for leg in ["fl", "fr", "bl", "br"]:
 		if not ("leg_"+leg in p_nodes) or not ("joint_"+leg in p_nodes): continue
@@ -83,28 +87,43 @@ func _animate_gallop(p):
 		var swing = sin(leg_p * TAU)
 		
 		# --- ROTACIÓN SUPERIOR (Hombro/Cadera) ---
-		# Sesgo frontal: Sumamos 0.2 para que la pata llegue más lejos adelante
-		var upper_rot = (swing * 0.7 + 0.2) * speed_ratio
-		if leg.begins_with("b"): upper_rot *= 0.9 # Traseras potentes
+		var upper_rot = 0.0
+		if leg.begins_with("f"):
+			# Delanteras: Sesgo frontal para alcanzar terreno (+0.3)
+			upper_rot = (swing * 0.6 + 0.3) * speed_ratio
+		else:
+			# Traseras: Sesgo trasero para empujar (-0.2)
+			# Movimiento más de "pistón"
+			upper_rot = (swing * 0.7 - 0.2) * speed_ratio
+		
 		p_nodes["leg_"+leg].rotation.x = upper_rot
 		
 		# --- ARTICULACIÓN MEDIA (Rodilla/Corvejón) ---
-		# Doblez agresivo en la fase de vuelo (swing > 0)
 		var knee_fold = 0.0
 		if swing > 0:
-			knee_fold = (swing * 1.5) * speed_ratio # Se dobla más para no chocar con el suelo
+			# Fase de vuelo (Doblar)
+			knee_fold = (swing * 1.5) * speed_ratio
 		else:
-			knee_fold = (sin(leg_p * TAU) * 0.3) * speed_ratio # Estiramiento ligero al plantar
-		p_nodes["joint_"+leg].rotation.x = -knee_fold
+			# Fase de apoyo (Estirar suavemente o mantener recto)
+			knee_fold = 0.0 
+			
+		if leg.begins_with("f"):
+			# Rodilla delantera se dobla hacia atrás (rotación negativa habitual)
+			p_nodes["joint_"+leg].rotation.x = -knee_fold
+		else:
+			# Corvejón trasero: Visualmente la "rodilla" trasera (stifle) está arriba oculta,
+			# pero la articulación media visible (hock) se dobla "hacia atrás" igual que la delantera
+			# en la mayoría de rigs simples, PERO con menos intensidad para no parecer agachado.
+			p_nodes["joint_"+leg].rotation.x = -knee_fold * 0.7
+			
 		
 		# --- CASCOS (Menudillo/Fetlock) ---
-		# Flicking: El casco se dobla hacia arriba al levantar la pata y baja al plantar
 		if "hoof_"+leg in p_nodes:
 			var hoof_rot = 0.0
-			if swing > 0.3: # Levantando/Vuelo
-				hoof_rot = (swing - 0.3) * 1.5
+			if swing > 0.3: # Levantando
+				hoof_rot = (swing - 0.3) * 1.2
 			elif swing < -0.5: # Impacto
-				hoof_rot = -0.3
+				hoof_rot = -0.2
 			p_nodes["hoof_"+leg].rotation.x = hoof_rot * speed_ratio
 
 	# 3. Cuello y Cola (Contrapeso y Fluidez)

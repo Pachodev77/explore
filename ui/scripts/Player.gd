@@ -13,7 +13,7 @@ var current_camera_state = CameraState.FAR
 onready var camera_pivot = $CameraPivot
 
 func _ready():
-	translation.y = 60.0 # OPTIMIZACIÓN: Sincronizado con WorldManager para evitar caída inicial
+	# translation.y = 60.0 # REMOVED: Managed by WorldManager
 	# ------------------------------------------------------------------
 	# HUD CONNECTION
 	# ------------------------------------------------------------------
@@ -25,12 +25,82 @@ func _ready():
 		hud.connect("mount_pressed", self, "_on_mount_pressed")
 		self.hud_ref = hud # Guardar referencia para actualizar botón
 	
+	# Asegurar que la cámara inicie recta y sin inclinación
+	# Asegurar que la cámara inicie recta y sin inclinación
+	camera_pivot.rotation = Vector3.ZERO 
+	rotation = Vector3.ZERO
+	look_dir = Vector2.ZERO
+	
+	_init_reins()
 	update_camera_settings()
 
 var hud_ref = null
 
+# --- SISTEMA DE RIENDAS ---
+var reins_line : ImmediateGeometry
+
+func _init_reins():
+	if has_node("ReinsLine"):
+		reins_line = get_node("ReinsLine")
+	else:
+		reins_line = ImmediateGeometry.new()
+		reins_line.name = "ReinsLine"
+		var m = SpatialMaterial.new()
+		m.albedo_color = Color(0.3, 0.2, 0.1) # Cuero marrón
+		m.flags_unshaded = true # Visible siempre
+		# params_line_width solo funciona en GLES2 o con flags específicos, 
+		# pero ImmediateGeometry dibuja líneas finas por defecto.
+		reins_line.material_override = m
+		add_child(reins_line)
+
 func _process(_delta):
-	pass
+	if is_riding and current_horse and reins_line:
+		_draw_reins()
+	elif reins_line:
+		reins_line.clear()
+
+func _draw_reins():
+	reins_line.clear()
+	reins_line.begin(Mesh.PRIMITIVE_LINE_STRIP)
+	
+	# 1. Punto de origen: Promedio de las Manos del jugador
+	# Estimación base: Frente al ombligo
+	var hand_pos = global_transform.origin + Vector3(0, 1.05, 0.4).rotated(Vector3.UP, rotation.y)
+	
+	if $MeshInstance.get("skel_node"):
+		var skel = $MeshInstance.skel_node
+		var h_l = skel.find_bone("HandL")
+		var h_r = skel.find_bone("HandR")
+		if h_l != -1 and h_r != -1:
+			var p_l = skel.global_transform.xform(skel.get_bone_global_pose(h_l).origin)
+			var p_r = skel.global_transform.xform(skel.get_bone_global_pose(h_r).origin)
+			hand_pos = (p_l + p_r) * 0.5
+
+	# 2. Punto destino: Boca del caballo (Nodo ReinAnchor)
+	# IMPORTANTE: La ruta incluye ProceduralMesh
+	var mouth_pos = current_horse.global_transform.origin + Vector3(0, 1.5, 0.8) # Fallback
+	var anchor_path = "ProceduralMesh/BodyRoot/NeckBase/NeckMid/Head/ReinAnchor"
+	if current_horse.has_node(anchor_path):
+		mouth_pos = current_horse.get_node(anchor_path).global_transform.origin
+	elif current_horse.has_node("ProceduralMesh"):
+		# Intento de búsqueda relativa si la estructura varió
+		var pm = current_horse.get_node("ProceduralMesh")
+		var anchor = pm.find_node("ReinAnchor", true, false)
+		if anchor:
+			mouth_pos = anchor.global_transform.origin
+	
+	# 3. Dibujar Curva (Bosal slack)
+	var mid_point = (hand_pos + mouth_pos) * 0.5
+	mid_point.y -= 0.35 # Más comba para parecer una cuerda suelta de bosal
+	
+	for i in range(11):
+		var t = i / 10.0
+		var q0 = hand_pos.linear_interpolate(mid_point, t)
+		var q1 = mid_point.linear_interpolate(mouth_pos, t)
+		var p = q0.linear_interpolate(q1, t)
+		reins_line.add_vertex(reins_line.to_local(p))
+	
+	reins_line.end()
 
 func _on_mount_pressed():
 	if is_riding:
@@ -87,8 +157,8 @@ func _physics_process(delta):
 	# ------------------------------------------------------------------
 	if is_riding and current_horse:
 		# Al estar montado, el jugador solo sigue al caballo
-		# La posición ya es relativa al mount_point (0,0,0)
-		transform.origin = Vector3.ZERO 
+		# La posición ya es relativa al mount_point (0,0,0) -> Ajuste visual Y+0.4
+		transform.origin = Vector3(0, 0.4, 0)
 		rotation = Vector3.ZERO
 		
 		# Pasamos el input al caballo para que él se mueva
@@ -181,8 +251,8 @@ func mount(horse_node):
 	old_parent.remove_child(self)
 	horse_node.get_node("MountPoint").add_child(self)
 	
-	# Resetear transform local
-	translation = Vector3.ZERO
+	# Resetear transform local (con offset de altura)
+	translation = Vector3(0, 0.4, 0)
 	rotation = Vector3.ZERO
 	
 	# ALINEAR CÁMARA DETRÁS DEL CABALLO
@@ -227,3 +297,6 @@ func dismount():
 	# Restaurar cámara normal
 	current_camera_state = CameraState.FAR
 	update_camera_settings()
+	
+	if reins_line:
+		reins_line.clear()

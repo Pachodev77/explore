@@ -69,6 +69,13 @@ func _generate_structure():
 	var head_dir = Vector3(0, -0.2, -0.6).normalized()
 	_create_part_mesh(head_node, "Skull", head_dir*hu*0.4, Vector3(hu*0.25, hu*0.15, hu*0.4), "tapered", head_dir)
 
+	# --- ANCLAJE PARA RIENDAS ---
+	var rein_anchor = Position3D.new()
+	rein_anchor.name = "ReinAnchor"
+	# Posición aproximada de la boca/bocado: Adelante y abajo relativo a la cabeza
+	rein_anchor.translation = head_dir * hu * 0.7 + Vector3(0, -hu*0.1, 0)
+	head_node.add_child(rein_anchor)
+
 	# 3. PATAS
 	var leg_x = hu * 0.4
 	var f_leg_z = body_z_start + hu * 0.4
@@ -113,10 +120,16 @@ func _generate_structure():
 	# 4. COLA
 	var tail_root = Spatial.new()
 	tail_root.name = "TailRoot"
-	tail_root.translation = rear_pos + Vector3(0, hu*0.3, hu*0.6)
+	# Mover más atrás (hu*0.8) y un poco más arriba (hu*0.4)
+	tail_root.translation = rear_pos + Vector3(0, hu*0.4, hu*0.8)
 	body_root.add_child(tail_root)
 	parts["tail"] = tail_root
-	_create_part_mesh(tail_root, "TailMesh", Vector3(0, -hu*0.6, hu*0.1), Vector3(hu*0.08, hu*0.6, hu*0.08), "capsule", Vector3(0, -hu*1.2, hu*0.2))
+	
+	# Hacerla más visible y orientada hacia AFUERA (Backwards +Z)
+	# Dir: Apuntando 45 grados hacia atrás y abajo
+	var tail_dir = Vector3(0, -hu*1.0, hu*1.5) 
+	var tail_center = tail_dir * 0.5
+	_create_part_mesh(tail_root, "TailMesh", tail_center, Vector3(hu*0.15, tail_dir.length()*0.9, hu*0.15), "capsule", tail_dir)
 
 # --- FUNCION MAESTRA DE CREACIÓN DE PARTES ---
 func _create_part_mesh(parent: Node, p_name: String, pos: Vector3, p_scale: Vector3, type: String, dir: Vector3 = Vector3.ZERO):

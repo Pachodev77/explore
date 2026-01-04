@@ -164,7 +164,13 @@ func _animate_riding(p):
 		var l_arm = bones["LowerArm" + side]
 		if u_arm != -1:
 			var rot = Basis().rotated(Vector3.RIGHT, deg2rad(-60 + arm_bounce * 10))
+			# Juntar las manos: Rotar hacia adentro
+			var inward = 15.0 if side == "L" else -15.0
+			rot = rot.rotated(Vector3.UP, deg2rad(inward))
 			skel.set_bone_pose(u_arm, Transform(rot, Vector3.ZERO))
 		if l_arm != -1:
+			# Antebrazo también un poco hacia adentro para cerrar la pose
 			var rot = Basis().rotated(Vector3.RIGHT, deg2rad(-20 - arm_bounce * 20))
+			var inward_low = 10.0 if side == "L" else -10.0
+			rot = rot.rotated(Vector3.UP, deg2rad(inward_low))
 			skel.set_bone_pose(l_arm, Transform(rot, Vector3.ZERO))
