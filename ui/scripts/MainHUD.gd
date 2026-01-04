@@ -3,6 +3,11 @@ extends Control
 signal joystick_moved(vector)
 signal camera_moved(vector)
 signal zoom_pressed()
+signal mount_pressed()
+
+func set_mount_visible(is_visible):
+	if buttons.has("mount"):
+		buttons["mount"].visible = is_visible
 
 # Joysticks (Ahora en contenedores flotantes sin panel)
 onready var left_joy = $MoveJoystickContainer/JoystickWell/Handle
@@ -15,27 +20,50 @@ var joy_radius = 70.0
 var left_touch_index = -1
 var right_touch_index = -1
 
+# Tween reutilizable (OPTIMIZACIÓN: evita crear/destruir nodos constantemente)
+var button_tween : Tween
+
+# Panel de configuración
+onready var settings_panel = get_node_or_null("../SettingsPanel")
+
 # Botones con estilos premium (Flotantes)
 onready var buttons = {
-	"fire": $ActionsContainer/Fire,
 	"jump": $ActionsContainer/Jump,
 	"magic": $ActionsContainer/Magic,
 	"attack": $ActionsContainer/Attack,
 	"bolt": $ShortcutsContainer/Bolt,
 	"shield": $ShortcutsContainer/Shield,
 	"map": $ShortcutsContainer/Map,
-	"zoom": $ShortcutsContainer/Zoom
+	"zoom": $ShortcutsContainer/Zoom,
+	"mount": $ActionsContainer/Mount
+}
+
+# Botones de la barra lateral
+onready var sidebar_buttons = {
+	"backpack": $Sidebar/Backpack,
+	"map_sidebar": $Sidebar/Map,
+	"social": $Sidebar/Social,
+	"settings": $Sidebar/Settings
 }
 
 func _ready():
+	# Crear Tween reutilizable
+	button_tween = Tween.new()
+	add_child(button_tween)
+	
 	# Inicializar posiciones de joysticks originales
 	left_joy.rect_position = left_center - left_joy.rect_size / 2
 	right_joy.rect_position = right_center - right_joy.rect_size / 2
 	
-	# Conectar eventos de botones
+	# Conectar eventos de botones de acción
 	for btn_name in buttons:
 		var btn = buttons[btn_name]
 		btn.connect("gui_input", self, "_on_button_input", [btn_name])
+	
+	# Conectar eventos de botones de la barra lateral
+	for btn_name in sidebar_buttons:
+		var btn = sidebar_buttons[btn_name]
+		btn.connect("gui_input", self, "_on_sidebar_button_input", [btn_name])
 	
 	# Forzar escalado de moneda (los contenedores a veces ignoran el tscn)
 	$Header/Currency/Diamonds/H/Icon.rect_min_size = Vector2(36, 36)
@@ -100,24 +128,38 @@ func _on_button_input(event, btn_name):
 			animate_button_press(btn)
 			if btn_name == "zoom":
 				emit_signal("zoom_pressed")
+			elif btn_name == "map":
+				# Abrir panel de configuración
+				if settings_panel:
+					settings_panel.visible = !settings_panel.visible
+			elif btn_name == "mount":
+				emit_signal("mount_pressed")
 		else:
 			animate_button_release(btn)
 
 func animate_button_press(node):
-	var tween = Tween.new()
-	add_child(tween)
-	tween.interpolate_property(node, "rect_scale", node.rect_scale, Vector2(0.92, 0.92), 0.05, Tween.TRANS_LINEAR, Tween.EASE_IN_OUT)
-	tween.start()
-	yield(tween, "tween_completed")
-	tween.queue_free()
+	# Usar el Tween reutilizable (OPTIMIZACIÓN)
+	button_tween.stop_all()
+	button_tween.interpolate_property(node, "rect_scale", node.rect_scale, Vector2(0.92, 0.92), 0.05, Tween.TRANS_LINEAR, Tween.EASE_IN_OUT)
+	button_tween.start()
 
 func animate_button_release(node):
-	var tween = Tween.new()
-	add_child(tween)
-	tween.interpolate_property(node, "rect_scale", node.rect_scale, Vector2(1.0, 1.0), 0.1, Tween.TRANS_LINEAR, Tween.EASE_IN_OUT)
-	tween.start()
-	yield(tween, "tween_completed")
-	tween.queue_free()
+	# Usar el Tween reutilizable (OPTIMIZACIÓN)
+	button_tween.stop_all()
+	button_tween.interpolate_property(node, "rect_scale", node.rect_scale, Vector2(1.0, 1.0), 0.1, Tween.TRANS_LINEAR, Tween.EASE_IN_OUT)
+	button_tween.start()
+
+func _on_sidebar_button_input(event, btn_name):
+	if event is InputEventScreenTouch or event is InputEventMouseButton:
+		if event.pressed:
+			print("Botón sidebar presionado:", btn_name)
+			if btn_name == "settings":
+				# Abrir panel de configuración
+				if settings_panel:
+					settings_panel.visible = !settings_panel.visible
+					print("Panel de configuración:", "VISIBLE" if settings_panel.visible else "OCULTO")
+				else:
+					print("ERROR: settings_panel no encontrado")
 
 func set_health(val_percent):
 	$Header/StatusBars/HealthBarCont/HealthBar.material.set_shader_param("value", val_percent)

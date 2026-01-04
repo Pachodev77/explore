@@ -3,12 +3,13 @@ extends Spatial
 # Configuración del mapa optimizada
 export(PackedScene) var tile_scene = preload("res://ui/scenes/GroundTile.tscn")
 export var tile_size = 150.0
-export var render_distance = 2
+export var render_distance = 4 # Más amplio para evitar ver el borde
 
 onready var player = get_parent().get_node("Player")
 
 var active_tiles = {}
-var spawn_queue = [] # Cola de tiles pendientes de generar
+var spawn_queue = [] 
+
 var noise = OpenSimplexNoise.new()
 var height_noise = OpenSimplexNoise.new()
 var biome_noise = OpenSimplexNoise.new()
@@ -21,9 +22,9 @@ const H_DESERT = 4.0
 const H_PRAIRIE = 2.0
 
 var shared_res = {
-	"ground_mat": ShaderMaterial.new(), # SHADER para todo el suelo
-	"tree_parts": [], # Array de {mesh, mat}
-	"cactus_parts": [], # Array de {mesh, mat}
+	"ground_mat": ShaderMaterial.new(),
+	"tree_parts": [],
+	"cactus_parts": [],
 	"rock_mesh": SphereMesh.new(),
 	"rock_mat": SpatialMaterial.new(),
 	"bush_mesh": CubeMesh.new(),
@@ -59,51 +60,65 @@ func _ready():
 	shared_res["biome_noise"] = biome_noise
 	
 	setup_shared_resources()
+	
+	# Generar área Inicial INMEDIATA (3x3)
+	# Generar área Inicial INMEDIATA (3x3)
+	var p_coords = get_tile_coords(player.global_transform.origin)
+	for x in range(int(p_coords.x) - 1, int(p_coords.x) + 2):
+		for z in range(int(p_coords.y) - 1, int(p_coords.y) + 2):
+			spawn_tile(x, z)
+	
+	# Colocar al jugador a salvo por encima de las montañas
+	player.translation.y = 60.0
+	
+	# SPAWN CABALLO DE PRUEBA
+	var horse_scene = load("res://ui/scenes/Horse.tscn")
+	if horse_scene:
+		var horse = horse_scene.instance()
+		add_child(horse)
+		horse.translation = Vector3(10, 60, -10) # Cerca del jugador (que empieza en 0,60,0)
+	
+	last_player_tile = p_coords
 	update_tiles()
 
 func setup_shared_resources():
-	# Cargar Shader y Texturas
+	# OPTIMIZACIÓN: preload = carga en compilación (instantáneo)
+	# load = carga en runtime (bloquea 100-200ms)
 	var shader = preload("res://ui/shaders/biome_blending.shader")
 	shared_res["ground_mat"].shader = shader
 	
-	# Intentar cargar las texturas JPG
-	var t_grass = load("res://ui/textures/grass.jpg")
-	var t_sand = load("res://ui/textures/sand.jpg")
-	var t_snow = load("res://ui/textures/snow.jpg")
-	var t_jungle = load("res://ui/textures/jungle.jpg")
+	var t_grass = preload("res://ui/textures/grass.jpg")
+	var t_sand = preload("res://ui/textures/sand.jpg")
+	var t_snow = preload("res://ui/textures/snow.jpg")
+	var t_jungle = preload("res://ui/textures/jungle.jpg")
 	
 	shared_res["ground_mat"].set_shader_param("grass_tex", t_grass)
 	shared_res["ground_mat"].set_shader_param("sand_tex", t_sand)
 	shared_res["ground_mat"].set_shader_param("snow_tex", t_snow)
 	shared_res["ground_mat"].set_shader_param("jungle_tex", t_jungle)
-	
 	shared_res["ground_mat"].set_shader_param("uv_scale", 0.025)
 	
-	# Cargar Modelos Progresivamente
-	var tree_scene = load("res://ui/tree.glb")
+	var tree_scene = preload("res://ui/tree.glb")
 	if tree_scene:
 		var tree_inst = tree_scene.instance()
 		shared_res["tree_parts"] = find_meshes_recursive(tree_inst)
 		tree_inst.queue_free()
 		
-	var cactus_scene = load("res://ui/cactus.glb")
+	var cactus_scene = preload("res://ui/cactus.glb")
 	if cactus_scene:
 		var cactus_inst = cactus_scene.instance()
 		shared_res["cactus_parts"] = find_meshes_recursive(cactus_inst)
 		cactus_inst.queue_free()
 
-	# Crear Plano de Agua
 	create_water_plane()
 
 func find_meshes_recursive(node, results = []):
 	if node is MeshInstance:
-		# Capturar material (prioridad: override > surface_material > mesh_default)
 		var mat = node.material_override
 		if not mat:
 			mat = node.get_surface_material(0)
 		if not mat and node.mesh:
 			mat = node.mesh.surface_get_material(0)
-			
 		results.append({"mesh": node.mesh, "mat": mat})
 		
 	for child in node.get_children():
@@ -113,9 +128,9 @@ func find_meshes_recursive(node, results = []):
 func create_water_plane():
 	var water_mesh = MeshInstance.new()
 	var plane = PlaneMesh.new()
-	plane.size = Vector2(tile_size * 5, tile_size * 5) # Cubre el área visible con margen
-	plane.subdivide_depth = 50
-	plane.subdivide_width = 50
+	plane.size = Vector2(tile_size * 8, tile_size * 8)
+	plane.subdivide_depth = 15 # Aún más bajo para estabilidad
+	plane.subdivide_width = 15
 	
 	water_mesh.mesh = plane
 	water_mesh.name = "WaterPlane"
@@ -124,52 +139,78 @@ func create_water_plane():
 	var mat = ShaderMaterial.new()
 	mat.shader = preload("res://ui/shaders/water.shader")
 	water_mesh.set_surface_material(0, mat)
-	
-	# Nivel del agua: Donde empiezan los valles
 	water_mesh.translation.y = -8.0
 
 func _process(_delta):
-	var current_tile_coords = get_tile_coords(player.translation)
-	if current_tile_coords != last_player_tile:
+	var p_pos = player.global_transform.origin
+	var current_tile_coords = get_tile_coords(p_pos)
+	if current_tile_coords.distance_to(last_player_tile) > 0.5:
 		last_player_tile = current_tile_coords
 		update_tiles()
 	
-	# Procesar solo un tile por frame para evitar lag
-	if spawn_queue.size() > 0:
-		var coords = spawn_queue.pop_front()
-		spawn_tile(coords.x, coords.y)
+	# Procesar spawn MUY rápido (4 por frame) al galopar
+	for _i in range(4):
+		if spawn_queue.size() > 0:
+			var coords = spawn_queue.pop_front()
+			spawn_tile(int(coords.x), int(coords.y))
 	
-	# Mover el agua con el jugador para que siempre parezca infinita
 	var water = get_node_or_null("WaterPlane")
 	if water:
-		water.translation.x = player.translation.x
-		water.translation.z = player.translation.z
+		water.translation.x = p_pos.x
+		water.translation.z = p_pos.z
 
 func get_tile_coords(pos):
-	return Vector2(floor(pos.x / tile_size), floor(pos.z / tile_size))
+	# POSICIÓN GLOBAL: Usamos global_transform para ignorar el parentesco
+	return Vector2(floor((pos.x + tile_size*0.5) / tile_size), floor((pos.z + tile_size*0.5) / tile_size))
 
 func update_tiles():
-	var player_coords = get_tile_coords(player.translation)
+	var p_pos = player.global_transform.origin
+	var player_coords = get_tile_coords(p_pos)
 	var new_active_keys = []
-	for x in range(player_coords.x - render_distance, player_coords.x + render_distance + 1):
-		for z in range(player_coords.y - render_distance, player_coords.y + render_distance + 1):
-			var coord_key = str(int(x)) + "," + str(int(z))
+	var x_int = int(player_coords.x)
+	var z_int = int(player_coords.y)
+	
+	for x in range(x_int - render_distance, x_int + render_distance + 1):
+		for z in range(z_int - render_distance, z_int + render_distance + 1):
+			var coords = Vector2(x, z)
+			var coord_key = str(x) + "," + str(z)
 			new_active_keys.append(coord_key)
+			
 			if not active_tiles.has(coord_key):
-				# Añadir a la cola en lugar de generar inmediatamente
-				var coords = Vector2(int(x), int(z))
 				if not spawn_queue.has(coords):
 					spawn_queue.append(coords)
+	
+	# LIMPIEZA DE COLA: Eliminar tiles que ya no están en rango para evitar backlog
+	var filtered_queue = []
+	for c in spawn_queue:
+		if abs(c.x - x_int) <= render_distance and abs(c.y - z_int) <= render_distance:
+			filtered_queue.append(c)
+	spawn_queue = filtered_queue
+	
+	# Ordenar por cercanía
+	spawn_queue.sort_custom(self, "_sort_by_dist")
+	
+	# Borrar tiles lejanos
+	var keys_to_remove = []
 	for key in active_tiles.keys():
 		if not key in new_active_keys:
-			active_tiles[key].queue_free()
-			active_tiles.erase(key)
+			keys_to_remove.append(key)
+	
+	for key in keys_to_remove:
+		active_tiles[key].queue_free()
+		active_tiles.erase(key)
+
+func _sort_by_dist(a, b):
+	var p_coords = get_tile_coords(player.global_transform.origin)
+	return a.distance_to(p_coords) < b.distance_to(p_coords)
 
 func spawn_tile(x, z):
+	var key = str(x) + "," + str(z)
+	if active_tiles.has(key): return
+	
 	var tile = tile_scene.instance()
 	tile.translation = Vector3(x * tile_size, 0, z * tile_size)
 	add_child(tile)
-	
 	if tile.has_method("setup_biome"):
 		tile.setup_biome(0, shared_res)
-	active_tiles[str(x) + "," + str(z)] = tile
+	active_tiles[key] = tile

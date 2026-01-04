@@ -9,9 +9,9 @@ uniform float wave_frequency : hint_range(0.0, 10.0) = 2.0;
 varying float height;
 
 void vertex() {
-	float w1 = sin(VERTEX.x * wave_frequency + TIME * wave_speed) * wave_amplitude;
-	float w2 = cos(VERTEX.z * wave_frequency * 0.8 + TIME * wave_speed * 1.2) * wave_amplitude;
-	VERTEX.y += w1 + w2;
+	// Onda única simplificada para máximo rendimiento
+	float w = sin(VERTEX.x * wave_frequency + TIME * wave_speed) * wave_amplitude;
+	VERTEX.y += w;
 	height = VERTEX.y;
 }
 

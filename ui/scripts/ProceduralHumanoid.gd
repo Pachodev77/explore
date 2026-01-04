@@ -25,8 +25,47 @@ var body_materials = {
 }
 
 func _ready():
+	# OPTIMIZACIÓN + FIX: Siempre crear skeleton, solo cachear el mesh
+	# Esto arregla la animación que estaba rota
+	var cache_path = "user://humanoid_cache.tres"
+	var cached_mesh = null
+	
+	# Intentar cargar mesh cacheado
+	var file = File.new()
+	if file.file_exists(cache_path):
+		cached_mesh = load(cache_path)
+	
+	# SIEMPRE crear el skeleton (necesario para animación)
 	_setup_materials()
-	_generate_everything()
+	_generate_rig()  # Crea el skeleton
+	
+	# DEBUG: Verificar que el skeleton se creó
+	if skel_node:
+		print("✅ Skeleton creado con", skel_node.get_bone_count(), "huesos")
+	else:
+		print("❌ ERROR: Skeleton NO se creó")
+	
+	if cached_mesh and cached_mesh is ArrayMesh:
+		# Usar mesh cacheado (INSTANTÁNEO - ~5ms)
+		mesh = cached_mesh
+		print("ProceduralHumanoid: Mesh cargado desde caché")
+	else:
+		# Primera vez: Generar mesh completo
+		print("ProceduralHumanoid: Generando mesh...")
+		_generate_skinned_mesh()
+		_apply_visual_test()
+		
+		# Guardar solo el mesh en caché
+		if mesh:
+			var result = ResourceSaver.save(cache_path, mesh)
+			if result == OK:
+				print("ProceduralHumanoid: Mesh guardado en caché")
+	
+	# CRÍTICO: Asignar skeleton path SIEMPRE (no solo al generar mesh)
+	# Esto permite que la animación funcione incluso con mesh cacheado
+	if skel_node:
+		self.skeleton = get_path_to(skel_node)
+		print("✅ Skeleton path asignado:", self.skeleton)
 
 func _setup_materials():
 	# Lista de partes que comparten material
@@ -80,8 +119,11 @@ func _generate_everything():
 
 func _generate_rig():
 	skel_node = Skeleton.new()
-	skel_node.name = "HumanoidSkeleton"
+	skel_node.name = "HumanoidRig"
 	add_child(skel_node)
+	
+	print("DEBUG: Skeleton creado y añadido como hijo de:", get_name())
+	print("DEBUG: Ruta del skeleton:", skel_node.get_path())
 	
 	_add_bone("Hips", -1, Vector3(0, 0.95, 0))
 	_add_bone("Spine", bone_ids["Hips"], Vector3(0, 0.15, 0))
@@ -98,6 +140,8 @@ func _generate_rig():
 		var ll = "LowerLeg"+side; _add_bone(ll, bone_ids[ul], Vector3(0, -0.35, 0))
 		var ft = "Foot"+side; _add_bone(ft, bone_ids[ll], Vector3(0, -0.5, 0)) # Pivote en el tobillo
 		var hnd = "Hand"+side; _add_bone(hnd, bone_ids[la], Vector3(0, -0.22, 0)) # Pivote en la muñeca
+	
+	print("DEBUG: Total de huesos creados:", skel_node.get_bone_count())
 
 func _add_bone(name, parent, rest):
 	skel_node.add_bone(name)
@@ -158,8 +202,8 @@ func _generate_skinned_mesh():
 		groups["Feet"].append(["Foot"+side, Vector3(0.11*sm, 0.036, 0.1), Vector3(0.09, 0.12, 0.18)])
 
 	var sphere = SphereMesh.new()
-	sphere.radial_segments = 64
-	sphere.rings = 48
+	sphere.radial_segments = 24 # Reducido de 64 para performance
+	sphere.rings = 16 # Reducido de 48 para performance
 	var sphere_arrays = sphere.get_mesh_arrays()
 	
 	for group_name in groups.keys():
@@ -248,7 +292,6 @@ func _generate_skinned_mesh():
 		am.surface_set_material(surface_idx, body_materials[group_name])
 
 	mesh = am
-	self.skeleton = get_path_to(skel_node)
 
 func _apply_visual_test():
 	print("ProceduralHumanoid V9: Multi-material listo.")

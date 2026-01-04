@@ -465,11 +465,18 @@ margin_right = -320.0
 margin_bottom = -60.0
 mouse_filter = 2
 
-[node name="Fire" type="ColorRect" parent="ActionsContainer"]
+[node name="Mount" type="ColorRect" parent="ActionsContainer"]
 material = SubResource( 4 )
 margin_left = 70.0
 margin_right = 140.0
 margin_bottom = 70.0
+
+[node name="Label" type="Label" parent="ActionsContainer/Mount"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+text = "RIDE"
+align = 1
+valign = 1
 
 [node name="Jump" type="ColorRect" parent="ActionsContainer"]
 material = SubResource( 4 )
@@ -532,3 +539,4 @@ margin_left = 140.0
 margin_top = 70.0
 margin_right = 210.0
 margin_bottom = 140.0
+

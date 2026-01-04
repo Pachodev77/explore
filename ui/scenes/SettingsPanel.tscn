@@ -1,0 +1,146 @@
+[gd_scene load_steps=2 format=2]
+
+[ext_resource path="res://ui/scripts/SettingsPanel.gd" type="Script" id=1]
+
+[node name="SettingsPanel" type="Panel"]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+margin_left = -200.0
+margin_top = -250.0
+margin_right = 200.0
+margin_bottom = 250.0
+script = ExtResource( 1 )
+
+[node name="VBox" type="VBoxContainer" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+margin_left = 20.0
+margin_top = 60.0
+margin_right = -20.0
+margin_bottom = -20.0
+
+[node name="Title" type="Label" parent="VBox"]
+margin_right = 360.0
+margin_bottom = 14.0
+text = "CONFIGURACIÓN DE RENDIMIENTO"
+align = 1
+
+[node name="Separator1" type="HSeparator" parent="VBox"]
+margin_top = 18.0
+margin_right = 360.0
+margin_bottom = 22.0
+
+[node name="DayNightToggle" type="HBoxContainer" parent="VBox"]
+margin_top = 26.0
+margin_right = 360.0
+margin_bottom = 46.0
+
+[node name="Label" type="Label" parent="VBox/DayNightToggle"]
+margin_top = 3.0
+margin_right = 336.0
+margin_bottom = 17.0
+size_flags_horizontal = 3
+text = "Ciclo Día/Noche"
+
+[node name="CheckBox" type="CheckBox" parent="VBox/DayNightToggle"]
+margin_left = 340.0
+margin_right = 360.0
+margin_bottom = 20.0
+pressed = true
+
+[node name="DecorationsToggle" type="HBoxContainer" parent="VBox"]
+margin_top = 50.0
+margin_right = 360.0
+margin_bottom = 70.0
+
+[node name="Label" type="Label" parent="VBox/DecorationsToggle"]
+margin_top = 3.0
+margin_right = 336.0
+margin_bottom = 17.0
+size_flags_horizontal = 3
+text = "Decoraciones (Árboles/Cactus)"
+
+[node name="CheckBox" type="CheckBox" parent="VBox/DecorationsToggle"]
+margin_left = 340.0
+margin_right = 360.0
+margin_bottom = 20.0
+pressed = true
+
+[node name="ShadowsToggle" type="HBoxContainer" parent="VBox"]
+margin_top = 74.0
+margin_right = 360.0
+margin_bottom = 94.0
+
+[node name="Label" type="Label" parent="VBox/ShadowsToggle"]
+margin_top = 3.0
+margin_right = 336.0
+margin_bottom = 17.0
+size_flags_horizontal = 3
+text = "Sombras"
+
+[node name="CheckBox" type="CheckBox" parent="VBox/ShadowsToggle"]
+margin_left = 340.0
+margin_right = 360.0
+margin_bottom = 20.0
+pressed = true
+
+[node name="FogToggle" type="HBoxContainer" parent="VBox"]
+margin_top = 98.0
+margin_right = 360.0
+margin_bottom = 118.0
+
+[node name="Label" type="Label" parent="VBox/FogToggle"]
+margin_top = 3.0
+margin_right = 336.0
+margin_bottom = 17.0
+size_flags_horizontal = 3
+text = "Niebla"
+
+[node name="CheckBox" type="CheckBox" parent="VBox/FogToggle"]
+margin_left = 340.0
+margin_right = 360.0
+margin_bottom = 20.0
+pressed = true
+
+[node name="GlowToggle" type="HBoxContainer" parent="VBox"]
+margin_top = 122.0
+margin_right = 360.0
+margin_bottom = 142.0
+
+[node name="Label" type="Label" parent="VBox/GlowToggle"]
+margin_top = 3.0
+margin_right = 336.0
+margin_bottom = 17.0
+size_flags_horizontal = 3
+text = "Glow (Resplandor)"
+
+[node name="CheckBox" type="CheckBox" parent="VBox/GlowToggle"]
+margin_left = 340.0
+margin_right = 360.0
+margin_bottom = 20.0
+pressed = true
+
+[node name="Separator2" type="HSeparator" parent="VBox"]
+margin_top = 146.0
+margin_right = 360.0
+margin_bottom = 150.0
+
+[node name="Info" type="Label" parent="VBox"]
+margin_top = 154.0
+margin_right = 360.0
+margin_bottom = 182.0
+text = "Desactiva opciones para mejorar el rendimiento. Los cambios se aplican inmediatamente."
+autowrap = true
+
+[node name="CloseButton" type="Button" parent="."]
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+margin_left = -50.0
+margin_top = -40.0
+margin_right = 50.0
+margin_bottom = -20.0
+text = "Cerrar"
