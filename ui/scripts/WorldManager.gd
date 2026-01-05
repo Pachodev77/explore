@@ -38,6 +38,10 @@ var shared_res = {
 }
 
 func _ready():
+	# Safety Check for exported variables
+	if tile_size == null: tile_size = 150.0
+	if render_distance == null: render_distance = 4
+	
 	randomize()
 	var common_seed = randi()
 	

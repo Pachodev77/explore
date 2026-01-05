@@ -1,8 +1,7 @@
-[gd_scene load_steps=18 format=2]
+[gd_scene load_steps=25 format=2]
 
 [ext_resource path="res://ui/scripts/MainHUD.gd" type="Script" id=1]
 [ext_resource path="res://ui/shaders/advanced_glass.shader" type="Shader" id=2]
-[ext_resource path="res://ui/shaders/console_body.shader" type="Shader" id=3]
 [ext_resource path="res://ui/shaders/console_button.shader" type="Shader" id=4]
 [ext_resource path="res://ui/shaders/stylized_progress.shader" type="Shader" id=5]
 [ext_resource path="res://ui/icons/inventory.jpg" type="Texture" id=6]
@@ -12,7 +11,15 @@
 [ext_resource path="res://ui/icons/health.jpg" type="Texture" id=10]
 [ext_resource path="res://ui/icons/mana.jpg" type="Texture" id=11]
 [ext_resource path="res://ui/shaders/symbol_icons.shader" type="Shader" id=12]
+[ext_resource path="res://ui/shaders/compass_star.shader" type="Shader" id=13]
 
+[sub_resource type="ShaderMaterial" id=7]
+shader = ExtResource( 2 )
+shader_param/blur_amount = 2.0
+shader_param/bg_color = Color( 0.0627451, 0.0980392, 0.133333, 0.95 )
+shader_param/border_color = Color( 1, 1, 1, 0.15 )
+shader_param/corner_radius = 0.15
+shader_param/border_width = 1.0
 
 [sub_resource type="ShaderMaterial" id=1]
 shader = ExtResource( 2 )
@@ -29,6 +36,7 @@ shader_param/color_start = Color( 0.862745, 0.14902, 0.14902, 1 )
 shader_param/color_end = Color( 0.972549, 0.443137, 0.443137, 1 )
 shader_param/bg_color = Color( 0, 0, 0, 0.85 )
 shader_param/aspect_ratio = 18.0
+shader_param/pulse_speed = 1.0
 
 [sub_resource type="ShaderMaterial" id=3]
 shader = ExtResource( 5 )
@@ -37,6 +45,53 @@ shader_param/color_start = Color( 0.145098, 0.388235, 0.921569, 1 )
 shader_param/color_end = Color( 0.376471, 0.647059, 0.980392, 1 )
 shader_param/bg_color = Color( 0, 0, 0, 0.85 )
 shader_param/aspect_ratio = 20.0
+shader_param/pulse_speed = 1.0
+
+[sub_resource type="ShaderMaterial" id=9]
+shader = ExtResource( 5 )
+shader_param/value = 0.0
+shader_param/color_start = Color( 1, 1, 1, 1 )
+shader_param/color_end = Color( 1, 1, 1, 1 )
+shader_param/bg_color = Color( 0.05, 0.07, 0.1, 0.9 )
+shader_param/aspect_ratio = 3.08
+shader_param/pulse_speed = 0.0
+
+[sub_resource type="ShaderMaterial" id=11]
+shader = ExtResource( 12 )
+shader_param/symbol_type = 0
+shader_param/color = Color( 0.45098, 0.823529, 1, 1 )
+shader_param/glow = 1.2
+
+[sub_resource type="ShaderMaterial" id=10]
+shader = ExtResource( 5 )
+shader_param/value = 0.0
+shader_param/color_start = Color( 1, 1, 1, 1 )
+shader_param/color_end = Color( 1, 1, 1, 1 )
+shader_param/bg_color = Color( 0.05, 0.07, 0.1, 0.9 )
+shader_param/aspect_ratio = 3.5
+shader_param/pulse_speed = 0.0
+
+[sub_resource type="ShaderMaterial" id=12]
+shader = ExtResource( 12 )
+shader_param/symbol_type = 1
+shader_param/color = Color( 1, 0.843137, 0, 1 )
+shader_param/glow = 1.2
+
+[sub_resource type="ShaderMaterial" id=13]
+shader = ExtResource( 13 )
+shader_param/rotation = 0.0
+shader_param/color_n = Color( 1, 0.2, 0.2, 1 )
+shader_param/color_light = Color( 1, 1, 1, 1 )
+shader_param/color_dark = Color( 0.1, 0.1, 0.1, 1 )
+shader_param/color_glow = Color( 1, 0.9, 0.5, 0.4 )
+
+[sub_resource type="ShaderMaterial" id=8]
+shader = ExtResource( 2 )
+shader_param/blur_amount = 5.0
+shader_param/bg_color = Color( 0.0588235, 0.0901961, 0.117647, 0.92 )
+shader_param/border_color = Color( 1, 1, 1, 0.3 )
+shader_param/corner_radius = 0.2
+shader_param/border_width = 1.8
 
 [sub_resource type="ShaderMaterial" id=4]
 shader = ExtResource( 4 )
@@ -49,60 +104,6 @@ shader = ExtResource( 4 )
 shader_param/color_top = Color( 0.937255, 0.266667, 0.266667, 1 )
 shader_param/color_bottom = Color( 0.6, 0.105882, 0.105882, 1 )
 shader_param/corner_radius = 0.5
-
-[sub_resource type="ShaderMaterial" id=6]
-shader = ExtResource( 2 )
-shader_param/blur_amount = 4.0
-shader_param/bg_color = Color( 0.0627451, 0.0980392, 0.133333, 0.6 )
-shader_param/border_color = Color( 1, 1, 1, 0.1 )
-shader_param/corner_radius = 0.3
-shader_param/border_width = 1.0
-
-[sub_resource type="ShaderMaterial" id=7]
-shader = ExtResource( 2 )
-shader_param/blur_amount = 2.0
-shader_param/bg_color = Color( 0.0627451, 0.0980392, 0.133333, 0.95 )
-shader_param/border_color = Color( 1, 1, 1, 0.15 )
-shader_param/corner_radius = 0.15
-shader_param/border_width = 1.0
-
-[sub_resource type="ShaderMaterial" id=8]
-shader = ExtResource( 2 )
-shader_param/blur_amount = 5.0
-shader_param/bg_color = Color( 0.0588235, 0.0901961, 0.117647, 0.92 )
-shader_param/border_color = Color( 1, 1, 1, 0.3 )
-shader_param/corner_radius = 0.2
-shader_param/border_width = 1.8
-
-[sub_resource type="ShaderMaterial" id=9]
-shader = ExtResource( 5 )
-shader_param/value = 0.0
-shader_param/color_start = Color( 1, 1, 1, 1 )
-shader_param/color_end = Color( 1, 1, 1, 1 )
-shader_param/bg_color = Color( 0.05, 0.07, 0.1, 0.9 )
-shader_param/aspect_ratio = 3.08
-shader_param/pulse_speed = 0.0
-
-[sub_resource type="ShaderMaterial" id=10]
-shader = ExtResource( 5 )
-shader_param/value = 0.0
-shader_param/color_start = Color( 1, 1, 1, 1 )
-shader_param/color_end = Color( 1, 1, 1, 1 )
-shader_param/bg_color = Color( 0.05, 0.07, 0.1, 0.9 )
-shader_param/aspect_ratio = 3.5
-shader_param/pulse_speed = 0.0
-
-[sub_resource type="ShaderMaterial" id=11]
-shader = ExtResource( 12 )
-shader_param/symbol_type = 0
-shader_param/color = Color( 0.45098, 0.823529, 1, 1 )
-shader_param/glow = 1.2
-
-[sub_resource type="ShaderMaterial" id=12]
-shader = ExtResource( 12 )
-shader_param/symbol_type = 1
-shader_param/color = Color( 1, 0.843137, 0, 1 )
-shader_param/glow = 1.2
 
 [node name="MainHUD" type="Control"]
 anchor_right = 1.0
@@ -156,7 +157,7 @@ custom_constants/separation = 20
 [node name="PauseBtn" type="ColorRect" parent="Header"]
 material = SubResource( 1 )
 margin_right = 60.0
-margin_bottom = 60.0
+margin_bottom = 80.0
 rect_min_size = Vector2( 60, 60 )
 
 [node name="Label" type="Label" parent="Header/PauseBtn"]
@@ -169,7 +170,7 @@ valign = 1
 [node name="StatusBars" type="VBoxContainer" parent="Header"]
 margin_left = 80.0
 margin_right = 480.0
-margin_bottom = 100.0
+margin_bottom = 80.0
 rect_min_size = Vector2( 400, 0 )
 mouse_filter = 2
 custom_constants/separation = 10
@@ -191,18 +192,17 @@ stretch_mode = 6
 [node name="HealthBar" type="ColorRect" parent="Header/StatusBars/HealthBarCont"]
 material = SubResource( 2 )
 margin_left = 47.0
-margin_top = 6.0
-margin_right = 397.0
-margin_bottom = 26.0
+margin_right = 400.0
+margin_bottom = 32.0
 rect_min_size = Vector2( 350, 20 )
 size_flags_horizontal = 3
 
 [node name="Fill" type="Node" parent="Header/StatusBars/HealthBarCont/HealthBar"]
 
 [node name="ManaBarCont" type="HBoxContainer" parent="Header/StatusBars"]
-margin_top = 47.0
+margin_top = 42.0
 margin_right = 400.0
-margin_bottom = 75.0
+margin_bottom = 70.0
 mouse_filter = 2
 custom_constants/separation = 15
 
@@ -217,28 +217,27 @@ stretch_mode = 6
 [node name="ManaBar" type="ColorRect" parent="Header/StatusBars/ManaBarCont"]
 material = SubResource( 3 )
 margin_left = 43.0
-margin_top = 6.0
 margin_right = 343.0
-margin_bottom = 21.0
+margin_bottom = 28.0
 rect_min_size = Vector2( 300, 15 )
 
 [node name="Fill" type="Node" parent="Header/StatusBars/ManaBarCont/ManaBar"]
 
 [node name="Currency" type="HBoxContainer" parent="Header"]
-margin_left = 360.0
-margin_right = 1232.0
-margin_bottom = 60.0
-size_flags_horizontal = 3
+margin_left = 500.0
+margin_right = 876.0
+margin_bottom = 80.0
 mouse_filter = 2
-alignment = 2
+size_flags_horizontal = 3
 custom_constants/separation = 12
+alignment = 2
 
 [node name="Diamonds" type="ColorRect" parent="Header/Currency"]
 material = SubResource( 9 )
-margin_left = 630.0
-margin_top = 10.0
-margin_right = 750.0
-margin_bottom = 50.0
+margin_left = 104.0
+margin_top = 20.0
+margin_right = 224.0
+margin_bottom = 60.0
 rect_min_size = Vector2( 120, 40 )
 size_flags_vertical = 4
 
@@ -248,33 +247,32 @@ anchor_bottom = 1.0
 margin_left = 6.0
 margin_right = -6.0
 mouse_filter = 2
-alignment = 1
 custom_constants/separation = 4
+alignment = 1
 
 [node name="Icon" type="ColorRect" parent="Header/Currency/Diamonds/H"]
 material = SubResource( 11 )
-margin_left = 6.0
+margin_left = 20.0
 margin_top = 4.0
-margin_right = 38.0
+margin_right = 52.0
 margin_bottom = 36.0
 rect_min_size = Vector2( 32, 32 )
 size_flags_vertical = 4
 
 [node name="Value" type="Label" parent="Header/Currency/Diamonds/H"]
-margin_left = 42.0
-margin_top = 8.0
-margin_right = 90.0
-margin_bottom = 32.0
-rect_scale = Vector2( 1.4, 1.4 )
+margin_left = 56.0
+margin_top = 13.0
+margin_right = 88.0
+margin_bottom = 27.0
 custom_colors/font_color = Color( 0.45098, 0.823529, 1, 1 )
 text = "1250"
 
 [node name="Gold" type="ColorRect" parent="Header/Currency"]
 material = SubResource( 10 )
-margin_left = 762.0
-margin_top = 10.0
-margin_right = 902.0
-margin_bottom = 50.0
+margin_left = 236.0
+margin_top = 20.0
+margin_right = 376.0
+margin_bottom = 60.0
 rect_min_size = Vector2( 140, 40 )
 size_flags_vertical = 4
 
@@ -284,26 +282,88 @@ anchor_bottom = 1.0
 margin_left = 6.0
 margin_right = -6.0
 mouse_filter = 2
-alignment = 1
 custom_constants/separation = 4
+alignment = 1
 
 [node name="Icon" type="ColorRect" parent="Header/Currency/Gold/H"]
 material = SubResource( 12 )
-margin_left = 8.0
+margin_left = 28.0
 margin_top = 6.0
-margin_right = 36.0
+margin_right = 56.0
 margin_bottom = 34.0
 rect_min_size = Vector2( 28, 28 )
 size_flags_vertical = 4
 
 [node name="Value" type="Label" parent="Header/Currency/Gold/H"]
-margin_left = 42.0
-margin_top = 8.0
-margin_right = 90.0
-margin_bottom = 32.0
-rect_scale = Vector2( 1.4, 1.4 )
+margin_left = 60.0
+margin_top = 13.0
+margin_right = 100.0
+margin_bottom = 27.0
 custom_colors/font_color = Color( 1, 0.843137, 0, 1 )
 text = "50400"
+
+[node name="CompassCont" type="Control" parent="Header"]
+margin_left = 896.0
+margin_right = 976.0
+margin_bottom = 80.0
+rect_min_size = Vector2( 80, 80 )
+mouse_filter = 2
+
+[node name="Compass" type="ColorRect" parent="Header/CompassCont"]
+material = SubResource( 13 )
+anchor_right = 1.0
+anchor_bottom = 1.0
+margin_top = 60.0
+margin_bottom = 60.0
+rect_min_size = Vector2( 80, 80 )
+rect_pivot_offset = Vector2( 40, 40 )
+mouse_filter = 2
+
+[node name="N" type="Label" parent="Header/CompassCont/Compass"]
+anchor_left = 0.5
+anchor_right = 0.5
+margin_left = -20.0
+margin_top = -12.0
+margin_right = 20.0
+margin_bottom = 2.0
+custom_colors/font_color = Color( 1, 0.2, 0.2, 1 )
+text = "N"
+align = 1
+
+[node name="S" type="Label" parent="Header/CompassCont/Compass"]
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+margin_left = -20.0
+margin_top = -2.0
+margin_right = 20.0
+margin_bottom = 12.0
+text = "S"
+align = 1
+
+[node name="E" type="Label" parent="Header/CompassCont/Compass"]
+anchor_left = 1.0
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 0.5
+margin_left = -2.0
+margin_top = -7.0
+margin_right = 12.0
+margin_bottom = 7.0
+text = "E"
+valign = 1
+
+[node name="W" type="Label" parent="Header/CompassCont/Compass"]
+anchor_top = 0.5
+anchor_bottom = 0.5
+margin_left = -12.0
+margin_top = -7.0
+margin_right = 2.0
+margin_bottom = 7.0
+text = "W"
+align = 2
+valign = 1
 
 [node name="Sidebar" type="VBoxContainer" parent="."]
 anchor_top = 0.5
@@ -345,9 +405,9 @@ color = Color( 0.937255, 0.266667, 0.266667, 1 )
 
 [node name="Map" type="ColorRect" parent="Sidebar"]
 material = SubResource( 8 )
-margin_top = 72.0
+margin_top = 75.0
 margin_right = 60.0
-margin_bottom = 132.0
+margin_bottom = 135.0
 rect_min_size = Vector2( 60, 60 )
 
 [node name="Icon" type="TextureRect" parent="Sidebar/Map"]
@@ -362,30 +422,11 @@ texture = ExtResource( 7 )
 expand = true
 stretch_mode = 6
 
-[node name="Social" type="ColorRect" parent="Sidebar"]
-material = SubResource( 8 )
-margin_top = 144.0
-margin_right = 60.0
-margin_bottom = 204.0
-rect_min_size = Vector2( 60, 60 )
-
-[node name="Icon" type="TextureRect" parent="Sidebar/Social"]
-anchor_right = 1.0
-anchor_bottom = 1.0
-margin_left = 10.0
-margin_top = 10.0
-margin_right = -10.0
-margin_bottom = -10.0
-mouse_filter = 2
-texture = ExtResource( 8 )
-expand = true
-stretch_mode = 6
-
 [node name="Settings" type="ColorRect" parent="Sidebar"]
 material = SubResource( 8 )
-margin_top = 216.0
+margin_top = 150.0
 margin_right = 60.0
-margin_bottom = 276.0
+margin_bottom = 210.0
 rect_min_size = Vector2( 60, 60 )
 
 [node name="Icon" type="TextureRect" parent="Sidebar/Settings"]
@@ -397,6 +438,25 @@ margin_right = -10.0
 margin_bottom = -10.0
 mouse_filter = 2
 texture = ExtResource( 9 )
+expand = true
+stretch_mode = 6
+
+[node name="Social" type="ColorRect" parent="Sidebar"]
+material = SubResource( 8 )
+margin_top = 225.0
+margin_right = 60.0
+margin_bottom = 285.0
+rect_min_size = Vector2( 60, 60 )
+
+[node name="Icon" type="TextureRect" parent="Sidebar/Social"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+margin_left = 10.0
+margin_top = 10.0
+margin_right = -10.0
+margin_bottom = -10.0
+mouse_filter = 2
+texture = ExtResource( 8 )
 expand = true
 stretch_mode = 6
 
@@ -539,4 +599,3 @@ margin_left = 140.0
 margin_top = 70.0
 margin_right = 210.0
 margin_bottom = 140.0
-

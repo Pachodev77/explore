@@ -50,7 +50,7 @@ func _process(delta):
 	# Actualizar rotación del sol (luz)
 	# Esto es barato (transform update)
 	var angle = (time_of_day - 0.25) * 360.0
-	sun.rotation_degrees = Vector3(-angle, 180, 0)
+	sun.rotation_degrees = Vector3(-angle, 90, 0)
 	
 	# Actualizar shader del cielo (GPU es rápida, sin lag)
 	if stars_sphere:

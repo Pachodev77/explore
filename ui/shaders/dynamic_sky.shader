@@ -55,11 +55,9 @@ void fragment() {
     // 3. Sol Procedural (Círculo simple)
     // Calcular posición del sol basado en time_of_day
     float sun_angle = (time_of_day - 0.25) * 6.28318;
-    vec3 sun_dir = vec3(0.0, sin(sun_angle), cos(sun_angle)); 
-    // Nota: Ajustado para coincidir con la rotación en GDScript (-angle en X)
-    // GDScript rota el nodo Light. Aquí calculamos el vector manualmente.
-    // Si la rotación es sobre X:
-    // Y = sin(theta), Z = cos(theta). X = 0.
+    vec3 sun_dir = vec3(cos(sun_angle), sin(sun_angle), 0.0); 
+    // Nota: Ajustado para coincidir con la rotación en GDScript (-angle en X, yaw 90)
+    // Cuando sun_angle = 0 (time_of_day 0.25), cos=1, sin=0 -> Dir = (+1, 0, 0) = ESTE.
     
     float sun_dot = dot(dir, normalize(sun_dir));
     float sun_disk = smoothstep(0.998, 0.999, sun_dot);

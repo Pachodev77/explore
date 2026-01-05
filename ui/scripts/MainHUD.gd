@@ -215,3 +215,15 @@ func set_health(val_percent):
 
 func set_mana(val_percent):
 	$Header/StatusBars/ManaBarCont/ManaBar.material.set_shader_param("value", val_percent)
+
+func _process(_delta):
+	# Actualizar brújula basado en la rotación de la cámara
+	var cam = get_viewport().get_camera()
+	if cam:
+		# La rotación Y de la cámara nos da la dirección horizontal
+		# El norte en Godot suele ser -Z (0 radianes en esta lógica)
+		var rot_y = cam.global_transform.basis.get_euler().y
+		# Rotamos el nodo completo para que roten las letras
+		$Header/CompassCont/Compass.rect_rotation = rad2deg(rot_y)
+		# Reseteamos la rotación interna del shader
+		$Header/CompassCont/Compass.material.set_shader_param("rotation", 0.0)
