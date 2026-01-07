@@ -55,6 +55,20 @@ func _process(delta):
 	if not skel:
 		return
 	
+	# --- ACTUALIZAR ESTADOS DE SALTO ---
+	jump_timer += delta
+	
+	# Timeout para anticipación (si no hay impulso vertical, saltamos igual al aire)
+	if current_jump_state == JumpState.ANTICIPATION and jump_timer > 0.15:
+		current_jump_state = JumpState.IN_AIR
+		jump_timer = 0.0
+	
+	# Salida del estado de impacto tras aterrizar
+	if current_jump_state == JumpState.IMPACT and jump_timer > 0.3:
+		current_jump_state = JumpState.IDLE
+		jump_timer = 0.0
+	
+	# Actualizar fase de caminata
 	if is_walking and walk_speed > 0.1:
 		phase += delta * speed_multiplier * walk_speed
 		if phase > TAU: phase -= TAU
@@ -69,11 +83,46 @@ func set_walking(walking, s):
 
 var is_riding = false
 var current_horse = null
+
+# --- NEW JUMP STATES ---
+enum JumpState { IDLE, ANTICIPATION, IN_AIR, IMPACT }
+var current_jump_state = JumpState.IDLE
+var jump_timer = 0.0
+var vertical_velocity = 0.0
+var is_on_floor = true
+
 func set_riding(riding, horse = null):
 	is_riding = riding
 	current_horse = horse
 
+func set_jumping(jumping):
+	# Solo activamos anticipación si estamos en el suelo y en IDLE
+	if jumping and current_jump_state == JumpState.IDLE and is_on_floor:
+		current_jump_state = JumpState.ANTICIPATION
+		jump_timer = 0.0
+
+func update_physics_state(v_vel, grounded):
+	vertical_velocity = v_vel
+	
+	# Detectar aterrizaje para entrar en IMPACT (más robusto)
+	if grounded and current_jump_state == JumpState.IN_AIR:
+		current_jump_state = JumpState.IMPACT
+		jump_timer = 0.0
+	
+	is_on_floor = grounded
+	
+	# Transición automática de ANTICIPATION a IN_AIR cuando empezamos a subir 
+	# o por timeout en _process
+	if current_jump_state == JumpState.ANTICIPATION and v_vel > 0.1:
+		current_jump_state = JumpState.IN_AIR
+		jump_timer = 0.0 # Reset timer for jump pose
+
 func _animate():
+	# Si estamos saltando o aterrizando, la animación de salto toma prioridad parcial
+	if current_jump_state != JumpState.IDLE:
+		_animate_jump_pro()
+		return
+	
 	var bounce = -abs(sin(phase)) * bounce_amp
 	var sway = sin(phase) * 0.03
 	
@@ -123,6 +172,67 @@ func _animate_limbs(p):
 			
 			skel.set_bone_pose(u_arm, Transform(Basis().rotated(Vector3.RIGHT, a_swing), Vector3.ZERO))
 			skel.set_bone_pose(l_arm, Transform(Basis().rotated(Vector3.RIGHT, elbow_bend), Vector3.ZERO))
+
+func _animate_jump_pro():
+	# Parámetros visuales según estado
+	var crouch = 0.0
+	var arm_raise = 0.0
+	var leg_fold = 0.0
+	var torso_tilt = 0.0
+	
+	match current_jump_state:
+		JumpState.ANTICIPATION:
+			var t = clamp(jump_timer / 0.15, 0.0, 1.0)
+			crouch = -0.25 * sin(t * PI * 0.5)
+			arm_raise = t * 20.0
+			torso_tilt = t * 10.0
+			
+		JumpState.IN_AIR:
+			# Reacciona a la velocidad vertical
+			# vertical_velocity > 0: Subiendo (Estiramiento)
+			# vertical_velocity < 0: Bajando (Encogimiento)
+			var v = clamp(vertical_velocity / 12.0, -1.0, 1.0)
+			
+			if v > 0: # Subiendo
+				crouch = 0.0
+				arm_raise = lerp(20.0, 70.0, v)
+				leg_fold = lerp(0.0, 30.0, v)
+				torso_tilt = -5.0
+			else: # Bajando
+				crouch = 0.0
+				arm_raise = lerp(70.0, 45.0, abs(v))
+				leg_fold = lerp(30.0, 60.0, abs(v))
+				torso_tilt = 10.0
+				
+		JumpState.IMPACT:
+			var t = clamp(jump_timer / 0.2, 0.0, 1.0)
+			crouch = -0.3 * sin(t * PI) # "Squash" al aterrizar
+			leg_fold = 40.0 * (1.0 - t)
+			arm_raise = 45.0 * (1.0 - t)
+			torso_tilt = 15.0 * (1.0 - t)
+	
+	# Aplicar Poses
+	var h_p = Transform.IDENTITY
+	h_p.origin.y = crouch
+	skel.set_bone_pose(bones["Hips"], h_p)
+	
+	if bones["Spine2"] != -1:
+		skel.set_bone_pose(bones["Spine2"], Transform(Basis().rotated(Vector3.RIGHT, deg2rad(torso_tilt)), Vector3.ZERO))
+		
+	for side in ["L", "R"]:
+		var u_leg = bones["UpperLeg" + side]
+		var l_leg = bones["LowerLeg" + side]
+		var u_arm = bones["UpperArm" + side]
+		
+		if u_leg != -1:
+			skel.set_bone_pose(u_leg, Transform(Basis().rotated(Vector3.RIGHT, deg2rad(-leg_fold)), Vector3.ZERO))
+		if l_leg != -1:
+			skel.set_bone_pose(l_leg, Transform(Basis().rotated(Vector3.RIGHT, deg2rad(leg_fold * 1.2)), Vector3.ZERO))
+		if u_arm != -1:
+			var side_offset = 10.0 if side == "L" else -10.0
+			var a_rot = Basis().rotated(Vector3.RIGHT, deg2rad(-arm_raise))
+			a_rot = a_rot.rotated(Vector3.UP, deg2rad(side_offset))
+			skel.set_bone_pose(u_arm, Transform(a_rot, Vector3.ZERO))
 
 func _animate_riding(p):
 	# Obtener datos del caballo

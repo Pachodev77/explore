@@ -1,33 +1,65 @@
 extends StaticBody
 
 enum Biome { PRAIRIE, DESERT, SNOW, JUNGLE }
+enum TileLOD { HIGH, LOW }
 
-# Configuración del plano (coincide con el MeshInstance base)
-const GRID_RES = 16 # 16x16 tramos = 17x17 vértices
+# Configuración del plano
+# LOD System: LOW = 4 res, no physics, no decos. HIGH = 12 res, full.
+const GRID_RES_HIGH = 12
+const GRID_RES_LOW = 4
 const TILE_SIZE = 150.0
 
-func setup_biome(_dummy_type, shared_resources, _dummy_height = 0, is_spawn = false):
+var current_lod = TileLOD.LOW
+var current_shared_res = null
+var current_is_spawn = false
+
+func setup_biome(_dummy_type, shared_resources, _dummy_height = 0, is_spawn = false, lod_level = TileLOD.LOW):
+	current_shared_res = shared_resources
+	current_is_spawn = is_spawn
+	current_lod = lod_level
+	
 	var mesh_instance = get_node_or_null("MeshInstance")
 	var deco_container = get_node_or_null("Decos")
 	if not mesh_instance or not deco_container: return
 	
-	# 1. Aplicar Material de Bioma
+	# 1. Aplicar Material de Bioma (Instantáneo)
 	mesh_instance.set_surface_material(0, shared_resources["ground_mat"])
 	
-	# 2. Re-generar Malla y Colisiones con SurfaceTool (Máxima fiabilidad)
-	_rebuild_mesh_and_physics(mesh_instance, shared_resources, is_spawn)
+	# 2. Geometría (resolución depende de LOD)
+	var grid_res = GRID_RES_LOW if lod_level == TileLOD.LOW else GRID_RES_HIGH
+	_rebuild_mesh_and_physics(mesh_instance, shared_resources, is_spawn, grid_res, lod_level)
 	
-	# 3. Decoraciones (Grid Optimizado)
-	_add_decos_final(deco_container, shared_resources, is_spawn)
+	# LOD_LOW: Skip decorations for speed
+	if lod_level == TileLOD.HIGH:
+		_add_decos_final(deco_container, shared_resources, is_spawn)
+		if is_spawn:
+			_add_fence(deco_container, shared_resources)
 
-	if is_spawn:
-		_add_fence(deco_container)
+func upgrade_to_high_lod():
+	if current_lod == TileLOD.HIGH: return
+	if current_shared_res == null: return
+	
+	current_lod = TileLOD.HIGH
+	var mesh_instance = get_node_or_null("MeshInstance")
+	var deco_container = get_node_or_null("Decos")
+	if not mesh_instance or not deco_container: return
+	
+	_rebuild_mesh_and_physics(mesh_instance, current_shared_res, current_is_spawn, GRID_RES_HIGH, TileLOD.HIGH)
+	
+	# STAGGERED UPGRADE: Yield to prevent freeze when upgrading
+	yield(get_tree(), "idle_frame")
+	if not is_instance_valid(self): return
+	
+	_add_decos_final(deco_container, current_shared_res, current_is_spawn)
+	if current_is_spawn:
+		_add_fence(deco_container, current_shared_res)
 
-func _add_fence(container):
-	# Material de madera procedural (simple color marrón)
-	var wood_mat = SpatialMaterial.new()
-	wood_mat.albedo_color = Color(0.4, 0.25, 0.1)
-	wood_mat.roughness = 0.9
+func _add_fence(container, shared_res):
+	# OPTIMIZACIÓN: Material Cacheado
+	var wood_mat = shared_res.get("wood_mat")
+	if not wood_mat: # Fallback
+		wood_mat = SpatialMaterial.new()
+		wood_mat.albedo_color = Color(0.4, 0.25, 0.1)
 	
 	# Mallas
 	var post_mesh = CubeMesh.new()
@@ -144,16 +176,20 @@ func _add_fence(container):
 	
 	# Añadir Pórticos en las Salidas (Oeste y Este)
 	# Oeste
-	_add_gate(container, Vector3(-half, perimeter_y, 0), 0.0)
+	_add_gate(container, Vector3(-half, perimeter_y, 0), 0.0, shared_res)
 	# Este
-	_add_gate(container, Vector3(half, perimeter_y, 0), 0.0)
+	_add_gate(container, Vector3(half, perimeter_y, 0), 0.0, shared_res)
 
-func _add_gate(container, pos, rot_deg):
-	var mat = SpatialMaterial.new()
-	mat.albedo_color = Color(0.35, 0.2, 0.1) # Madera más oscura
+func _add_gate(container, pos, rot_deg, shared_res):
+	var mat = shared_res.get("wood_mat")
+	if not mat: 
+		mat = SpatialMaterial.new()
+		mat.albedo_color = Color(0.35, 0.2, 0.1)
 	
-	var sign_mat = SpatialMaterial.new()
-	sign_mat.albedo_color = Color(0.8, 0.7, 0.5) # Madera clara para letrero
+	var sign_mat = shared_res.get("sign_mat")
+	if not sign_mat:
+		sign_mat = SpatialMaterial.new()
+		sign_mat.albedo_color = Color(0.8, 0.7, 0.5)
 	
 	var rot = Basis(Vector3.UP, deg2rad(rot_deg))
 	
@@ -228,7 +264,7 @@ func _add_col_box(parent, pos, size):
 	parent.add_child(sb)
 
 
-func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn):
+func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn, grid_res = GRID_RES_HIGH, lod_level = LOD.HIGH):
 	var st = SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	
@@ -238,7 +274,7 @@ func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn):
 	var he = shared_res["H_DESERT"]; var hw = shared_res["H_PRAIRIE"]
 	
 	# Generar vértices en un grid
-	var step = TILE_SIZE / GRID_RES
+	var step = TILE_SIZE / grid_res
 	var offset = TILE_SIZE / 2.0
 	
 	# Initialize fixed noise for spawn consistency
@@ -246,21 +282,21 @@ func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn):
 	if is_spawn:
 		fixed_noise = OpenSimplexNoise.new()
 		fixed_noise.seed = 1337
-		fixed_noise.period = 60.0 # Más suave (olas más largas)
+		fixed_noise.period = 60.0
 		fixed_noise.persistence = 0.5
 		fixed_noise.octaves = 2
 	
 	# Almacenamos vértices para la triangulación
 	var verts = []
-	for z in range(GRID_RES + 1):
-		for x in range(GRID_RES + 1):
+	for z in range(grid_res + 1):
+		for x in range(grid_res + 1):
 			var lx = (x * step) - offset
 			var lz = (z * step) - offset
 			var gx = translation.x + lx
 			var gz = translation.z + lz
 			
 			var noise_val = b_noise.get_noise_2d(gx, gz)
-			var deg = rad2deg(atan2(gz, gx)) + (noise_val * 45.0)
+			var deg = rad2deg(atan2(gz, gx)) + (noise_val * 120.0)
 			
 			var blend = 0.0
 			if is_spawn:
@@ -269,10 +305,11 @@ func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn):
 				# Blend: 1.0 at <33m (inside fence), transitions to 0.0 at >53m
 				blend = clamp(1.0 - (dist - 33.0) / 20.0, 0.0, 1.0)
 				
-				# Target biome angle: 180 (Prairie)
-				# We use lerp_angle to smoothly blend the rotation
-				deg = lerp_angle(deg2rad(deg), deg2rad(180.0), blend)
-				deg = rad2deg(deg)
+				# Target biome angle: 180 (Prairie) - ONLY FOR START TILE
+				# For other settlements, we want the native biome
+				if abs(translation.x) < 1.0 and abs(translation.z) < 1.0:
+					deg = lerp_angle(deg2rad(deg), deg2rad(180.0), blend)
+					deg = rad2deg(deg)
 			
 			while deg > 180: deg -= 360
 			while deg <= -180: deg += 360
@@ -293,22 +330,14 @@ func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn):
 				var t = (deg + 180) / 90.0
 				wr = 1.0 - t; wb = t; h_mult = lerp(hw, hn, t) # Prairie -> Snow
 			
-			if is_spawn:
-				# Mezcla basada en ruido para parches definidos
-				# Usamos el mismo fixed_noise pero con diferente escala/offset si quisiéramos, 
-				# o simplemente el valor directo.
-				var tex_n = fixed_noise.get_noise_2d(gx * 8.0, gz * 8.0) # Frecuencia ALTA para muchos parches pequeños
-				
-				# Convertir ruido (-1 a 1) en factor de mezcla (0 a 1) con contraste
+			# Texture Patch - ONLY FOR START TILE
+			if is_spawn and abs(translation.x) < 1.0 and abs(translation.z) < 1.0:
+				var tex_n = fixed_noise.get_noise_2d(gx * 8.0, gz * 8.0)
 				var patch_mix = clamp((tex_n + 0.2) * 3.0, 0.0, 1.0) 
-				
-				# Definir colores target para el centro (Patch Mix: 0=Desierto, 1=Pradera)
 				var target_wr = patch_mix
 				var target_wg = 1.0 - patch_mix
 				var target_wb = 0.0
 				var target_wa = 0.0
-				
-				# Mezclar con el bioma global en los bordes
 				wr = lerp(wr, target_wr, blend)
 				wg = lerp(wg, target_wg, blend)
 				wb = lerp(wb, target_wb, blend)
@@ -318,37 +347,54 @@ func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn):
 			if is_spawn: 
 				var spawn_y = 2.0 # Totalmente plano
 				y = lerp(y, spawn_y, blend)
+			
+			# --- ROAD INFLUENCE ---
+			var road_info = get_parent().get_road_influence(gx, gz)
+			if road_info.is_road:
+				y = lerp(y, road_info.height, road_info.weight)
+				
+				# Modify biome weights for road appearance (Muddy/Dirt road)
+				var road_w = road_info.weight
+				if road_w > 0.1:
+					var target_wr = 0.4; var target_wg = 0.6; var target_wb = 0.0; var target_wa = 0.0
+					wr = lerp(wr, target_wr, road_w)
+					wg = lerp(wg, target_wg, road_w)
+					wb = lerp(wb, target_wb, road_w)
+					wa = lerp(wa, target_wa, road_w)
+					
 			var v = Vector3(lx, y, lz)
 			
 			st.add_color(Color(wr, wg, wb, wa))
-			st.add_uv(Vector2(x / float(GRID_RES), z / float(GRID_RES)))
+			st.add_uv(Vector2(x / float(grid_res), z / float(grid_res)))
 			st.add_vertex(v)
 			verts.append(v)
 			
 	# Triangulación (Índices)
-	for z in range(GRID_RES):
-		for x in range(GRID_RES):
-			var i = x + z * (GRID_RES + 1)
+	for z in range(grid_res):
+		for x in range(grid_res):
+			var i = x + z * (grid_res + 1)
 			# Primer Triángulo
 			st.add_index(i)
 			st.add_index(i + 1)
-			st.add_index(i + GRID_RES + 1)
+			st.add_index(i + grid_res + 1)
 			# Segundo Triángulo
 			st.add_index(i + 1)
-			st.add_index(i + GRID_RES + 2)
-			st.add_index(i + GRID_RES + 1)
+			st.add_index(i + grid_res + 2)
+			st.add_index(i + grid_res + 1)
 			
 	st.generate_normals()
 	var new_mesh = st.commit()
 	mesh_instance.mesh = new_mesh
 	
-	# Colisión (Trimesh es infalible para grids pequeños)
-	var collision_shape = get_node_or_null("CollisionShape")
-	if not collision_shape:
-		collision_shape = CollisionShape.new()
-		collision_shape.name = "CollisionShape"
-		add_child(collision_shape)
-	collision_shape.shape = new_mesh.create_trimesh_shape()
+	# LOD-BASED PHYSICS: Only generate for HIGH LOD (close tiles)
+	# LOW LOD tiles don't need physics since they are far away.
+	if lod_level == TileLOD.HIGH or is_spawn:
+		var collision_shape = get_node_or_null("CollisionShape")
+		if not collision_shape:
+			collision_shape = CollisionShape.new()
+			collision_shape.name = "CollisionShape"
+			add_child(collision_shape)
+		collision_shape.shape = new_mesh.create_trimesh_shape()
 
 func _add_decos_final(deco_container, shared_res, is_spawn):
 	# Limpieza previa
@@ -374,14 +420,16 @@ func _add_decos_final(deco_container, shared_res, is_spawn):
 			var gz = translation.z + lz
 			
 			var noise_val = shared_res["biome_noise"].get_noise_2d(gx, gz)
-			# RESTAURADO: Biomas definidos por dirección (radial)
-			var deg = rad2deg(atan2(gz, gx)) + (noise_val * 45.0)
+			var deg = rad2deg(atan2(gz, gx)) + (noise_val * 120.0) # Unified with terrain math (120.0)
 			
 			if is_spawn:
 				var dist = max(abs(lx), abs(lz))
-				var blend = clamp(1.0 - (dist - 33.0) / 20.0, 0.0, 1.0)
-				deg = lerp_angle(deg2rad(deg), deg2rad(180.0), blend)
-				deg = rad2deg(deg)
+				var blend_s = clamp(1.0 - (dist - 33.0) / 20.0, 0.0, 1.0)
+				
+				# Only start tile has mandatory Prairie biome
+				if abs(translation.x) < 1.0 and abs(translation.z) < 1.0:
+					deg = lerp_angle(deg2rad(deg), deg2rad(180.0), blend_s)
+					deg = rad2deg(deg)
 			
 			while deg > 180: deg -= 360
 			while deg <= -180: deg += 360
@@ -391,10 +439,18 @@ func _add_decos_final(deco_container, shared_res, is_spawn):
 			elif deg > 45 and deg <= 135: type = Biome.JUNGLE
 			elif deg > -45 and deg <= 45: type = Biome.DESERT
 			
-			# DENSIDAD POR BIOMA: Jungla espesa (90%), Desierto despejado (15%), Resto (35%)
+			# DENSIDAD POR BIOMA
 			var spawn_chance = 0.35
 			if type == Biome.JUNGLE: spawn_chance = 0.9
 			elif type == Biome.DESERT: spawn_chance = 0.15
+			
+			if is_spawn:
+				var dist = max(abs(lx), abs(lz))
+				if dist < 33.0: continue # Limpiar interior de la cerca
+				
+				# Bonus de densidad para el perímetro (efecto seto)
+				if dist < 43.0:
+					spawn_chance = 0.95
 			
 			if randf() > spawn_chance: continue
 			
@@ -405,28 +461,22 @@ func _add_decos_final(deco_container, shared_res, is_spawn):
 			else: h_mult = lerp(shared_res["H_PRAIRIE"], shared_res["H_SNOW"], (deg + 180) / 90.0)
 			
 			var y_h = shared_res["height_noise"].get_noise_2d(gx, gz) * h_mult
-			# Approximation for height check: 
-			# We don't have the exact blended height here easily without recalculating logic
-			# But trees/bushes should check their Y against valid ground separately if needed.
-			# For now, let's just let them spawn based on the biome check above.
-			# The y calculation for object placement usually follows the terrain height.
-			# In this loop (old code), y_h is just used for filtering "underwater" (<-7.0)
-			# and then `tf.origin.y` is usually set to `y_h`? 
-			# Wait, the original code sets `y_h + offset`. 
-			# We need the CORRECT height for the object.
 			
+			# --- SETTLEMENT FLATTENING ---
 			if is_spawn:
-				# Re-calculate correct blended height
 				var dist = max(abs(lx), abs(lz))
-				var blend = clamp(1.0 - (dist - 33.0) / 20.0, 0.0, 1.0)
-				
-				# We need the fixed_noise instance here too...
-				# To avoid duplicate code complexity, let's just make a simple reproducible noise
-				var local_noise_val = 0.0
-				# Simple pseudo-noise or just re-instance if performance allows (it's 36 iterations)
-				var fn = OpenSimplexNoise.new(); fn.seed=1337; fn.period=60.0; fn.octaves=2;
-				var sy = fn.get_noise_2d(gx, gz) * 0.1 + 2.0
-				y_h = lerp(y_h, sy, blend)
+				var blend_s = clamp(1.0 - (dist - 33.0) / 20.0, 0.0, 1.0)
+				var spawn_y = 2.0 # EXACT match with terrain flattening
+				y_h = lerp(y_h, spawn_y, blend_s)
+			
+			# --- ROAD INFLUENCE ---
+			var road_info = get_parent().get_road_influence(gx, gz)
+			if road_info.is_road:
+				y_h = lerp(y_h, road_info.height, road_info.weight)
+			
+			# Don't spawn objects on the road
+			if road_info.is_road and road_info.weight > 0.3:
+				continue
 			
 			if y_h < -7.0: continue
 			
@@ -436,13 +486,12 @@ func _add_decos_final(deco_container, shared_res, is_spawn):
 			if type == Biome.JUNGLE and shared_res["tree_parts"].size() > 0:
 				var s = rand_range(1.0, 2.0)
 				tf = tf.scaled(Vector3(s, s, s))
-				tf.origin = Vector3(lx, y_h - 0.2, lz)
+				tf.origin = Vector3(lx, y_h - 1.1, lz)
 				tree_instances.append(tf)
 			elif type == Biome.DESERT and shared_res["cactus_parts"].size() > 0:
-				# TAMAÑO MENOR: Reducido de 1.2-3.0 a 0.7-1.4
 				var s = rand_range(0.7, 1.4)
 				tf = tf.scaled(Vector3(s, s, s))
-				tf.origin = Vector3(lx, y_h + 2.1, lz)
+				tf.origin = Vector3(lx, y_h + 1.3, lz)
 				cactus_instances.append(tf)
 
 	_apply_mmi_final(deco_container, shared_res["tree_parts"], tree_instances)

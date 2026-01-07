@@ -538,25 +538,46 @@ text = "RIDE"
 align = 1
 valign = 1
 
-[node name="Jump" type="ColorRect" parent="ActionsContainer"]
+[node name="Run" type="ColorRect" parent="ActionsContainer"]
 material = SubResource( 4 )
 margin_left = 70.0
 margin_top = 140.0
 margin_right = 140.0
 margin_bottom = 210.0
 
-[node name="Magic" type="ColorRect" parent="ActionsContainer"]
+[node name="Label" type="Label" parent="ActionsContainer/Run"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+text = "RUN"
+align = 1
+valign = 1
+
+[node name="Attack" type="ColorRect" parent="ActionsContainer"]
 material = SubResource( 4 )
 margin_top = 70.0
 margin_right = 70.0
 margin_bottom = 140.0
 
-[node name="Attack" type="ColorRect" parent="ActionsContainer"]
+[node name="Label" type="Label" parent="ActionsContainer/Attack"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+text = "ATK"
+align = 1
+valign = 1
+
+[node name="Jump" type="ColorRect" parent="ActionsContainer"]
 material = SubResource( 5 )
 margin_left = 140.0
 margin_top = 70.0
 margin_right = 210.0
 margin_bottom = 140.0
+
+[node name="Label" type="Label" parent="ActionsContainer/Jump"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+text = "JUMP"
+align = 1
+valign = 1
 
 [node name="ShortcutsContainer" type="Control" parent="."]
 anchor_top = 1.0

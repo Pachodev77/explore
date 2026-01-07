@@ -26,6 +26,8 @@ func _ready():
 		hud.connect("camera_moved", self, "_on_camera_moved")
 		hud.connect("zoom_pressed", self, "_on_zoom_pressed")
 		hud.connect("mount_pressed", self, "_on_mount_pressed")
+		hud.connect("run_pressed", self, "_on_run_pressed")
+		hud.connect("jump_pressed", self, "_on_jump_pressed")
 		self.hud_ref = hud # Guardar referencia para actualizar botón
 	
 	# Asegurar que la cámara inicie recta y sin inclinación
@@ -38,6 +40,7 @@ func _ready():
 	update_camera_settings()
 
 var hud_ref = null
+var is_sprinting = false
 
 # --- SISTEMA DE RIENDAS ---
 var reins_line : ImmediateGeometry
@@ -169,6 +172,22 @@ func _on_zoom_pressed():
 	current_camera_state = (current_camera_state + 1) % 4
 	update_camera_settings()
 
+func _on_run_pressed(is_active):
+	is_sprinting = is_active
+
+func _on_jump_pressed():
+	# If riding, ONLY tell horse to jump (player follows as child)
+	# Animation is handled automatically by WalkAnimation._animate_riding() checking horse.is_jumping
+	if is_riding and current_horse:
+		if current_horse.has_method("jump"):
+			current_horse.jump()
+	# Jump if on ground (only when not riding)
+	elif is_on_floor():
+		velocity.y = 12.0
+		# Trigger jump animation
+		if $WalkAnimator.has_method("set_jumping"):
+			$WalkAnimator.set_jumping(true)
+
 func update_camera_settings():
 	var cam = $CameraPivot/Camera
 	match current_camera_state:
@@ -211,9 +230,11 @@ func _physics_process(delta):
 		# La posición ya es relativa al mount_point (0,0,0) -> Ajuste visual Y+0.4
 		transform.origin = Vector3(0, 0.4, 0)
 		rotation = Vector3.ZERO
+		velocity = Vector3.ZERO  # CRITICAL: Zero out player velocity when riding
 		
 		# Pasamos el input al caballo para que él se mueva
 		current_horse.rider_input = move_dir
+		current_horse.rider_sprinting = is_sprinting
 		
 		# Opción: Permitir rotar la cámara independientemente, 
 		# pero el cuerpo del jugador sigue al caballo.
@@ -234,21 +255,25 @@ func _physics_process(delta):
 	
 	var direction = (forward * -move_dir.y + right * move_dir.x).normalized()
 	
+	# SPRINT: Multiply speed by 1.8x when sprinting
+	var current_speed = speed * (1.8 if is_sprinting else 1.0)
+	
 	if direction.length() > 0.1:
-		velocity.x = direction.x * speed
-		velocity.z = direction.z * speed
+		velocity.x = direction.x * current_speed
+		velocity.z = direction.z * current_speed
 	else:
 		velocity.x = lerp(velocity.x, 0, 10 * delta)
 		velocity.z = lerp(velocity.z, 0, 10 * delta)
 	
 	# Gravity Logic
-	if is_on_floor():
+	if is_on_floor() and velocity.y <= 0:
 		velocity.y = -0.1 # Minimal force to keep grounded
 	else:
 		velocity.y -= 25.0 * delta
 	
 	# Snap logic to stick to slopes and stop_on_slope = true
-	var snap = Vector3.DOWN if is_on_floor() else Vector3.ZERO
+	# CRITICAL: Disable snap when jumping (velocity.y > 0)
+	var snap = Vector3.DOWN if is_on_floor() and velocity.y <= 0 else Vector3.ZERO
 	velocity = move_and_slide_with_snap(velocity, snap, Vector3.UP, true, 4, deg2rad(45))
 	
 	# Additional fix: If on floor and no movement input, force horizontal velocity to zero
@@ -268,6 +293,7 @@ func _physics_process(delta):
 	
 	# Actualizar Animación Procedural
 	var horizontal_vel = Vector3(velocity.x, 0, velocity.z)
+	$WalkAnimator.update_physics_state(velocity.y, is_on_floor())
 	$WalkAnimator.set_walking(is_on_floor() and horizontal_vel.length() > 0.1, horizontal_vel.length())
 
 # --- FUNCIONES DE MONTURA ---

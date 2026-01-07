@@ -4,6 +4,8 @@ signal joystick_moved(vector)
 signal camera_moved(vector)
 signal zoom_pressed()
 signal mount_pressed()
+signal run_pressed(is_active)
+signal jump_pressed()
 
 func set_mount_visible(is_visible):
 	if buttons.has("mount"):
@@ -28,14 +30,14 @@ onready var settings_panel = get_node_or_null("../SettingsPanel")
 
 # Botones con estilos premium (Flotantes)
 onready var buttons = {
-	"jump": $ActionsContainer/Jump,
-	"magic": $ActionsContainer/Magic,
 	"attack": $ActionsContainer/Attack,
+	"jump": $ActionsContainer/Jump,
 	"bolt": $ShortcutsContainer/Bolt,
 	"shield": $ShortcutsContainer/Shield,
 	"map": $ShortcutsContainer/Map,
 	"zoom": $ShortcutsContainer/Zoom,
-	"mount": $ActionsContainer/Mount
+	"mount": $ActionsContainer/Mount,
+	"run": $ActionsContainer/Run
 }
 
 # Botones de la barra lateral
@@ -62,6 +64,7 @@ func _ready():
 	$ActionsContainer.mouse_filter = MOUSE_FILTER_IGNORE
 	$ShortcutsContainer.mouse_filter = MOUSE_FILTER_IGNORE
 	$Header.mouse_filter = MOUSE_FILTER_IGNORE
+	$Sidebar.mouse_filter = MOUSE_FILTER_IGNORE  # CRÍTICO: Permitir que los toques lleguen a los botones hijos
 	
 	# Conectar eventos de botones de acción
 	for btn_name in buttons:
@@ -76,13 +79,29 @@ func _ready():
 		btn.mouse_filter = 0
 		btn.connect("gui_input", self, "_on_sidebar_button_input", [btn_name])
 	
-	# Forzar escalado de moneda (los contenedores a veces ignoran el tscn)
+	# Forzar escalado de moneda
 	$Header/Currency/Diamonds/H/Icon.rect_min_size = Vector2(36, 36)
 	$Header/Currency/Diamonds/H/Value.rect_scale = Vector2(1.6, 1.6)
 	$Header/Currency/Gold/H/Icon.rect_min_size = Vector2(32, 32)
 	$Header/Currency/Gold/H/Value.rect_scale = Vector2(1.6, 1.6)
 	
+	# Instanciar MapPanel
+	var map_scene = load("res://ui/scenes/MapPanel.tscn")
+	if map_scene:
+		var map_panel = map_scene.instance()
+		map_panel.name = "MapPanel"
+		map_panel.visible = false
+		add_child(map_panel)
+		
+		# Conectar botón cerrar
+		var close_btn = map_panel.get_node_or_null("Background/CloseButton")
+		if close_btn:
+			close_btn.connect("pressed", self, "_on_map_close")
+	
 	_style_buttons()
+	
+	# FIX Z-ORDER: Sidebar debe estar ENCIMA de los joysticks para recibir input
+	$Sidebar.raise()
 
 func _style_buttons():
 	# Crear materiales programáticamente para asegurar consistencia
@@ -99,7 +118,7 @@ func _style_buttons():
 	mat_blue.set_shader_param("corner_radius", 0.5)
 	
 	# Aplicar a botones derechos (ROJO)
-	for b in ["jump", "magic", "attack", "mount"]:
+	for b in ["attack", "jump", "mount", "run"]:
 		if buttons.has(b): buttons[b].material = mat_red
 	
 	# Joystick Derecho (Rojo)
@@ -128,17 +147,23 @@ func _input(event):
 	
 	if is_touch_event:
 		if event.pressed:
+			# Solo capturar si está DENTRO de un joystick
 			if left_touch_index == -1 and $MoveJoystickContainer/JoystickWell.get_global_rect().has_point(touch_pos):
 				left_touch_index = index
+				get_tree().set_input_as_handled()
 			elif right_touch_index == -1 and $CamJoystickContainer/JoystickWell.get_global_rect().has_point(touch_pos):
 				right_touch_index = index
+				get_tree().set_input_as_handled()
 		else:
+			# Release
 			if index == left_touch_index:
 				left_touch_index = -1
 				reset_joy(left_joy, left_center, "joystick_moved")
+				get_tree().set_input_as_handled()
 			elif index == right_touch_index:
 				right_touch_index = -1
 				reset_joy(right_joy, right_center, "camera_moved")
+				get_tree().set_input_as_handled()
 
 	if event is InputEventScreenDrag or (event is InputEventMouseMotion and (left_touch_index != -1 or right_touch_index != -1)):
 		var move_pos = event.position
@@ -146,8 +171,10 @@ func _input(event):
 		
 		if move_index == left_touch_index:
 			update_joystick(move_pos, left_joy, left_center, "joystick_moved")
+			get_tree().set_input_as_handled()
 		elif move_index == right_touch_index:
 			update_joystick(move_pos, right_joy, right_center, "camera_moved")
+			get_tree().set_input_as_handled()
 
 func update_joystick(touch_pos, joy_node, center_local, signal_name):
 	var parent_rect = joy_node.get_parent().get_global_rect()
@@ -178,13 +205,20 @@ func _on_button_input(event, btn_name):
 			if btn_name == "zoom":
 				emit_signal("zoom_pressed")
 			elif btn_name == "map":
-				# Abrir panel de configuración
-				if settings_panel:
-					settings_panel.visible = !settings_panel.visible
+				# Abrir panel de MAPA
+				var map_panel = get_node_or_null("MapPanel")
+				if map_panel:
+					map_panel.visible = !map_panel.visible
 			elif btn_name == "mount":
 				emit_signal("mount_pressed")
+			elif btn_name == "run":
+				emit_signal("run_pressed", true)
+			elif btn_name == "jump":
+				emit_signal("jump_pressed")
 		else:
 			animate_button_release(btn)
+			if btn_name == "run":
+				emit_signal("run_pressed", false)
 
 func animate_button_press(node):
 	# Usar el Tween reutilizable (OPTIMIZACIÓN)
@@ -202,7 +236,12 @@ func _on_sidebar_button_input(event, btn_name):
 	if event is InputEventScreenTouch or event is InputEventMouseButton:
 		if event.pressed:
 			print("Botón sidebar presionado:", btn_name)
-			if btn_name == "settings":
+			if btn_name == "map_sidebar":
+				# Abrir panel de MAPA
+				var map_panel = get_node_or_null("MapPanel")
+				if map_panel:
+					map_panel.visible = !map_panel.visible
+			elif btn_name == "settings":
 				# Abrir panel de configuración
 				if settings_panel:
 					settings_panel.visible = !settings_panel.visible
@@ -227,3 +266,8 @@ func _process(_delta):
 		$Header/CompassCont/Compass.rect_rotation = rad2deg(rot_y)
 		# Reseteamos la rotación interna del shader
 		$Header/CompassCont/Compass.material.set_shader_param("rotation", 0.0)
+
+func _on_map_close():
+	var map_panel = get_node_or_null("MapPanel")
+	if map_panel:
+		map_panel.visible = false

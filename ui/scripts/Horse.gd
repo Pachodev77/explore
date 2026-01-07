@@ -17,6 +17,7 @@ onready var interaction_area = $InteractionArea
 onready var mesh_gen = $ProceduralMesh
 
 var rider_input = Vector2.ZERO
+var rider_sprinting = false
 var anim_phase = 0.0
 var anim_bounce = 0.0
 var anim_pitch = 0.0
@@ -34,13 +35,26 @@ func _physics_process(delta):
 	if not is_on_floor():
 		velocity.y -= gravity * delta
 	
+	# Update jump state
+	if is_jumping:
+		jump_timer += delta
+		if jump_timer > 0.5 or (is_on_floor() and jump_timer > 0.1):  # Reset after 0.5s or when landing (with small delay)
+			is_jumping = false
+			jump_timer = 0.0
+	
 	if is_ridden and rider:
 		_process_ridden_movement(delta)
 	else:
 		_process_idle_movement(delta)
 	
-	# Movimiento con Snap balanceado: 70 grados de tope y snap más suave (0.4)
-	var snap = -get_floor_normal() * 0.4 if is_on_floor() else Vector3.DOWN * 0.2
+	# CRITICAL FIX: Disable snap when jumping to allow upward velocity
+	# Snap forces the body to stick to ground, which cancels jump velocity
+	var snap = Vector3.ZERO
+	if is_on_floor() and not is_jumping:
+		snap = -get_floor_normal() * 0.4
+	elif is_on_floor():
+		snap = Vector3.DOWN * 0.2
+	
 	velocity = move_and_slide_with_snap(velocity, snap, Vector3.UP, true, 4, deg2rad(70))
 	
 	# Gestionar Animación
@@ -174,8 +188,11 @@ func _process_ridden_movement(delta):
 			# Al estar rotando hacia la dirección, el movimiento siempre es "adelante" del caballo
 			move_dir = -transform.basis.z * rider_input.length()
 	
+	# SPRINT: Apply 1.5x speed multiplier when rider is sprinting
+	var current_speed = speed * (1.5 if rider_sprinting else 1.0)
+	
 	# Movimiento con aceleración suave
-	var target_vel = move_dir.normalized() * speed * (0.5 if rider_input.length() < 0.5 else 1.0)
+	var target_vel = move_dir.normalized() * current_speed * (0.5 if rider_input.length() < 0.5 else 1.0)
 	velocity.x = lerp(velocity.x, target_vel.x, 3 * delta)
 	velocity.z = lerp(velocity.z, target_vel.z, 3 * delta)
 
@@ -198,3 +215,12 @@ func interact(player_node):
 func dismount():
 	is_ridden = false
 	rider = null
+
+var is_jumping = false
+var jump_timer = 0.0
+
+func jump():
+	# Always apply jump force when called
+	velocity.y = jump_force
+	is_jumping = true
+	jump_timer = 0.0
