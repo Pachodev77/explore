@@ -42,7 +42,7 @@ func _generate_structure():
 	body_root.translation = Vector3(0, leg_height, 0)
 	add_child(body_root)
 	parts["body"] = body_root
- 
+
 	# Ribcage (Caja torácica ancha)
 	var rib_pos = Vector3(0, hu*0.1, body_z_start + hu*0.6)
 	_create_part_mesh(body_root, "Ribcage", rib_pos, Vector3(hu*0.85, hu*0.9, hu*1.1), "ellipsoid")
