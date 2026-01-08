@@ -39,66 +39,90 @@ var curr_h_leg_b = 0.0 # Back legs lift
 var horse_smoothing = 12.0
 var gait_lerp = 0.0 # 0 = Trot/Standard, 1 = Full Gallop
 
+# --- IA DE REPOSO (Como la vaca) ---
+var move_timer = 0.0
+var idle_target_dir = Vector3.ZERO
+var is_eating = true
+var eating_weight = 0.0 # Para suavizar el bajar la cabeza
+
+# --- SISTEMA DE LLAMADA ---
+var calling_player = null
+var call_arrival_dist = 2.5
+
+var physics_tick = 0
+var screen_visible = true
+
 func _ready():
 	add_to_group("horses")
-	# Inicializar mesh si no está hecho
 	if mesh_gen and mesh_gen.has_method("_generate_structure"):
 		mesh_gen._generate_structure()
-		# AJUSTE VISUAL: Subir el mesh para que no parezca hundido en el suelo
 		mesh_gen.translation.y = 0.3
+	
+	# Inicializar IA
+	move_timer = rand_range(5, 12)
+	is_eating = true
+	
+	# Optimization: Only animate/process if visible
+	var vn = VisibilityNotifier.new()
+	vn.connect("screen_entered", self, "_on_screen_entered")
+	vn.connect("screen_exited", self, "_on_screen_exited")
+	add_child(vn)
+
+func _on_screen_entered(): screen_visible = true
+func _on_screen_exited(): screen_visible = false
 
 func _physics_process(delta):
-	# Detección de agua (Hasta el cuello, más profundo)
-	# Si el origen está por debajo de water_level + 2.1, ya estamos en el agua
+	if not screen_visible and not is_ridden:
+		return
+		
+	physics_tick += 1
+	# Throttling: If not ridden, update at 30fps. If ridden, update every frame for responsiveness.
+	if not is_ridden and physics_tick % 2 != 0:
+		return
+	
+	var effective_delta = delta * 2.0 if (not is_ridden) else delta
+	
+	# Detección de agua
 	in_water = global_transform.origin.y < water_level + 2.1
 	
 	if in_water:
-		# 1. Resistencia viscosa
-		velocity.y = lerp(velocity.y, 0, 8.0 * delta)
-		
-		# 2. Objetivo de flotación profunda: -2.05m (V4: Sumergir más el cuello)
+		velocity.y = lerp(velocity.y, 0, 8.0 * effective_delta)
 		var target_y = water_level - 2.05 
 		var diff = target_y - global_transform.origin.y
-		
-		# Solo aplicar flotación si no estamos tocando el suelo DE FORMA FIRME 
-		# o si el suelo está muy profundo.
 		var b_force = 45.0
 		if is_on_floor() and global_transform.origin.y > target_y:
-			# Si estamos en la orilla, reducir flotación para ganar tracción
 			b_force = 5.0
-		
-		velocity.y += diff * b_force * delta
+		velocity.y += diff * b_force * effective_delta
 	else:
-		# Gravedad normal fuera del agua
 		if not is_on_floor():
-			velocity.y -= gravity * delta
+			velocity.y -= gravity * effective_delta
 	
 	# --- MOVIMIENTO Y SALTO ---
 	match current_jump_state:
 		JumpState.ANTICIPATION:
-			jump_timer += delta
+			jump_timer += effective_delta
 			if jump_timer > 0.12:
 				velocity.y = jump_force
 				current_jump_state = JumpState.IN_AIR
 				jump_timer = 0.0
 		JumpState.IN_AIR:
-			jump_timer += delta
+			jump_timer += effective_delta
 			if is_on_floor() and velocity.y <= 0:
 				current_jump_state = JumpState.IMPACT
 				jump_timer = 0.0
 		JumpState.IMPACT:
-			jump_timer += delta
+			jump_timer += effective_delta
 			if jump_timer > 0.3:
 				current_jump_state = JumpState.IDLE
 				jump_timer = 0.0
 	
 	if is_ridden and rider:
-		_process_ridden_movement(delta)
+		_process_ridden_movement(effective_delta)
+	elif calling_player:
+		_process_call_movement(effective_delta)
 	else:
-		_process_idle_movement(delta)
+		_process_idle_movement(effective_delta)
 	
-	# SNAP: Solo activarlo si estamos en la orilla o tierra firme
-	# Si el origen está muy profundo (y < water_level - 1.0), NO snappeamos para poder flotar
 	var snap = Vector3.ZERO
 	if is_on_floor() and current_jump_state == JumpState.IDLE:
 		if not in_water or global_transform.origin.y > water_level - 1.0:
@@ -106,16 +130,13 @@ func _physics_process(delta):
 	
 	velocity = move_and_slide_with_snap(velocity, snap, Vector3.UP, true, 4, deg2rad(70))
 	
-	# --- ACTUALIZAR SUAVIZADO DE ANIMACIÓN ---
-	_update_smoothed_parameters(delta)
+	_update_smoothed_parameters(effective_delta)
 	
-	# Transición de marcha (Gait)
 	var horizontal_speed = Vector3(velocity.x, 0, velocity.z).length()
 	var target_gait = 1.0 if (rider_sprinting and horizontal_speed > speed * 0.8) else 0.0
-	gait_lerp = lerp(gait_lerp, target_gait, delta * 3.0)
+	gait_lerp = lerp(gait_lerp, target_gait, effective_delta * 3.0)
 	
-	# Gestionar Animación
-	_update_animation(delta)
+	_update_animation(effective_delta)
 
 func _update_animation(delta):
 	var horizontal_speed = Vector3(velocity.x, 0, velocity.z).length()
@@ -206,16 +227,26 @@ func _animate_gallop(p):
 	# 3. Cuello y Cola (Contrapeso y Fluidez)
 	if "neck_base" in p_nodes:
 		var neck_bounce = sin(p * TAU - 0.5) * 0.1 * speed_ratio
-		# Bajar la cabeza al correr (postura de esfuerzo)
 		var neck_lowering = gait_lerp * 0.4
-		p_nodes.neck_base.rotation.x = -anim_pitch * 0.6 + neck_bounce + neck_lowering
+		
+		# POSE DE COMER: Bajar el cuello gradualmente
+		var eat_pose = -eating_weight * deg2rad(110.0) # Aún más bajo (antes 85)
+		p_nodes.neck_base.rotation.x = -anim_pitch * 0.6 + neck_bounce - neck_lowering + eat_pose
+		
+		if "neck_mid" in p_nodes:
+			# Rotación positiva para "estirar" el cuello en lugar de encogerlo
+			p_nodes.neck_mid.rotation.x = eating_weight * deg2rad(10.0)
+		if "head" in p_nodes:
+			# Rotación positiva para que el hocico apunte hacia adelante/suelo y no al pecho
+			p_nodes.head.rotation.x = eating_weight * deg2rad(25.0)
 		
 	if "tail" in p_nodes:
-		# La cola ahora se mueve menos y está más baja
 		var tail_lift = lerp(0.3, 0.8, gait_lerp)
 		var tail_swing_speed = lerp(1.5, 3.0, gait_lerp)
+		# Mover la cola suavemente al estar quieto (espantar moscas)
+		var idle_flick = (1.0 - speed_ratio) * sin(OS.get_ticks_msec() * 0.003) * 0.2
 		p_nodes.tail.rotation.x = tail_lift + (sin(p * TAU * tail_swing_speed) * 0.2 * speed_ratio)
-		p_nodes.tail.rotation.z = (sin(p * TAU * 1.5) * 0.15 * speed_ratio * (1.0 + gait_lerp))
+		p_nodes.tail.rotation.z = (sin(p * TAU * 1.5) * 0.15 * speed_ratio * (1.0 + gait_lerp)) + idle_flick
 
 func _process_ridden_movement(delta):
 	var move_dir = Vector3.ZERO
@@ -271,9 +302,89 @@ func _process_ridden_movement(delta):
 	velocity.z = lerp(velocity.z, target_vel.z, 3 * delta)
 
 func _process_idle_movement(delta):
-	# Fricción fuerte cuando nadie monta
-	velocity.x = lerp(velocity.x, 0, 5 * delta)
-	velocity.z = lerp(velocity.z, 0, 5 * delta)
+	# IA DE VAGA (Como la vaca)
+	move_timer -= delta
+	if move_timer <= 0:
+		if not is_eating:
+			# Terminar de caminar, empezar a comer
+			is_eating = true
+			idle_target_dir = Vector3.ZERO
+			move_timer = rand_range(8, 20)
+		else:
+			# Terminar de comer, caminar a otro lado
+			is_eating = false
+			var rand_angle = rand_range(0, TAU)
+			idle_target_dir = Vector3(sin(rand_angle), 0, cos(rand_angle))
+			move_timer = rand_range(4, 8)
+	
+	# Mezclar peso de animación de comer
+	# El caballo come si:
+	# 1. No está montado y la IA dice 'is_eating'
+	# 2. O está montado pero el jinete no se mueve
+	var horizontal_speed = Vector3(velocity.x, 0, velocity.z).length()
+	var is_still = horizontal_speed < 0.1
+	
+	var should_eat = false
+	if is_ridden:
+		should_eat = is_still # Come si está quieto con jinete
+	else:
+		should_eat = is_eating and is_still # Comportamiento de IA normal
+		
+	var target_eat_w = 1.0 if should_eat else 0.0
+	
+	# Velocidad de lerp: más lenta para bajar (2.0), muy rápida para subir (8.0)
+	var lerp_v = 2.0 if target_eat_w > eating_weight else 8.0
+	eating_weight = lerp(eating_weight, target_eat_w, lerp_v * delta)
+	
+	# Rotación y movimiento
+	if not is_eating and idle_target_dir.length() > 0.1:
+		var target_basis = Transform.IDENTITY.looking_at(idle_target_dir, Vector3.UP).basis
+		global_transform.basis = global_transform.basis.slerp(target_basis, rotation_speed * 0.5 * delta)
+		
+		# Caminar despacio (30% de la velocidad base)
+		var walk_vel = idle_target_dir * speed * 0.25
+		velocity.x = lerp(velocity.x, walk_vel.x, 2 * delta)
+		velocity.z = lerp(velocity.z, walk_vel.z, 2 * delta)
+	else:
+		# Frenado suave
+		velocity.x = lerp(velocity.x, 0, 4 * delta)
+		velocity.z = lerp(velocity.z, 0, 4 * delta)
+
+func _process_call_movement(delta):
+	if not calling_player: return
+	
+	var target_pos = calling_player.global_transform.origin
+	# Offset para ubicarse al lado (a la derecha del jugador)
+	var offset = calling_player.global_transform.basis.x * 1.8
+	var arrival_pos = target_pos + offset
+	
+	var to_target = arrival_pos - global_transform.origin
+	var dist = to_target.length()
+	
+	if dist < call_arrival_dist:
+		calling_player = null # Llegada
+		velocity.x = 0
+		velocity.z = 0
+		return
+	
+	var dir = to_target.normalized()
+	
+	# Rotación suave hacia el jugador
+	var target_basis = Transform.IDENTITY.looking_at(dir, Vector3.UP).basis
+	global_transform.basis = global_transform.basis.slerp(target_basis, rotation_speed * delta)
+	
+	# Correr (Usar velocidad de sprint)
+	var run_speed = speed * 1.5
+	velocity.x = lerp(velocity.x, dir.x * run_speed, 3 * delta)
+	velocity.z = lerp(velocity.z, dir.z * run_speed, 3 * delta)
+	
+	# Informar al sistema de animación que estamos corriendo
+	rider_sprinting = true
+
+func call_to_player(p_node):
+	calling_player = p_node
+	is_eating = false
+	eating_weight = 0.0 # Levantar la cabeza inmediatamente al ser llamado
 
 func interact(player_node):
 	if is_ridden:

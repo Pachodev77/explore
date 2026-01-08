@@ -33,26 +33,30 @@ func _ready():
 	update_cycle()
 
 func _process(delta):
-	# OPTIMIZACIÓN 1: Actualizar tiempo cada frame
 	var cycle_speed = 1.0 / (cycle_duration_minutes * 60.0)
 	time_of_day += delta * cycle_speed
 	if time_of_day >= 1.0:
 		time_of_day -= 1.0
 	
-	# Actualizar ciclo (Ambiente, Energía luz) - IMPORTANTE para que no sea oscuro
-	update_cycle()
+	# OPTIMIZACIÓN: Solo actualizar ambiente si el tiempo cambió significativamente (cada 1 segundo aprox)
+	last_update_time += delta
+	if last_update_time > 0.5:
+		update_cycle()
+		last_update_time = 0.0
 	
-	# SEGUIR A LA CÁMARA: La bóveda celeste siempre centrada en la vista (standard skybox)
+	# Rotación del sol (Más suave que el resto del ambiente)
+	var sun_rot_timer = get_meta("sun_rot_timer") if has_meta("sun_rot_timer") else 0.0
+	sun_rot_timer += delta
+	if sun_rot_timer > 0.1:
+		var angle = (time_of_day - 0.25) * 360.0
+		sun.rotation_degrees = Vector3(-angle, 90, 0)
+		set_meta("sun_rot_timer", 0.0)
+	
+	# Seguir a la cámara (Brújula)
 	var cam = get_viewport().get_camera()
 	if cam:
 		global_transform.origin = cam.global_transform.origin
 	
-	# Actualizar rotación del sol (luz)
-	# Esto es barato (transform update)
-	var angle = (time_of_day - 0.25) * 360.0
-	sun.rotation_degrees = Vector3(-angle, 90, 0)
-	
-	# Actualizar shader del cielo (GPU es rápida, sin lag)
 	if stars_sphere:
 		var mat = stars_sphere.get_surface_material(0)
 		if mat:

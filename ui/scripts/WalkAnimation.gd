@@ -34,11 +34,24 @@ export var step_lift = 0.3
 export var swing_angle = 35.0
 export var bounce_amp = 0.05
 
+var update_tick = 0
+var screen_visible = true
+
 func _ready():
-	# Buscar skeleton con múltiples intentos
-	yield(get_tree(), "idle_frame")  # Esperar un frame para que ProceduralHumanoid termine
+	# ... (Previous skeleton search logic) ...
+	yield(get_tree(), "idle_frame")
+	_find_skeleton()
 	
-	# Intentar múltiples rutas
+	# Add VisibilityNotifier for optimization
+	var vn = VisibilityNotifier.new()
+	vn.connect("screen_entered", self, "_on_screen_entered")
+	vn.connect("screen_exited", self, "_on_screen_exited")
+	add_child(vn)
+
+func _on_screen_entered(): screen_visible = true
+func _on_screen_exited(): screen_visible = false
+
+func _find_skeleton():
 	skel = get_parent().get_node_or_null("MeshInstance/HumanoidRig")
 	if not skel:
 		skel = get_node_or_null("../MeshInstance/HumanoidRig")
@@ -49,56 +62,44 @@ func _ready():
 				if child is Skeleton:
 					skel = child
 					break
-	
-	# Inicializar IDs de huesos
 	if skel:
-		print("✅ WalkAnimation: Skeleton encontrado con", skel.get_bone_count(), "huesos")
 		for b in bones.keys():
 			bones[b] = skel.find_bone(b)
-			if bones[b] == -1:
-				print("❌ Hueso NO encontrado:", b)
-			else:
-				print("✅ Hueso encontrado:", b, "=", bones[b])
-	else:
-		print("❌ ERROR: WalkAnimation NO encontró el skeleton")
-		print("   Buscado en: MeshInstance/HumanoidRig")
 
 func _process(delta):
-	if not skel:
+	if not skel or not screen_visible:
 		return
 	
-	# --- ACTUALIZAR ESTADOS DE SALTO ---
+	# OPTIMIZACIÓN: Solo animar a 30 FPS internos si es necesario (alternar frames)
+	update_tick += 1
+	if update_tick % 2 != 0 and walk_speed < 0.1 and not is_riding:
+		# Si estamos quietos, podemos saltar frames sutilmente
+		pass
+
+	# Actualizar estados de salto
 	jump_timer += delta
-	
-	# Timeout para anticipación (si no hay impulso vertical, saltamos igual al aire)
 	if current_jump_state == JumpState.ANTICIPATION and jump_timer > 0.15:
 		current_jump_state = JumpState.IN_AIR
 		jump_timer = 0.0
-	
-	# Salida del estado de impacto tras aterrizar
 	if current_jump_state == JumpState.IMPACT and jump_timer > 0.3:
 		current_jump_state = JumpState.IDLE
 		jump_timer = 0.0
 	
-	# Actualizar fase de caminata
 	if is_walking and walk_speed > 0.1:
 		phase += delta * speed_multiplier * walk_speed
 		if phase > TAU: phase -= TAU
 	else:
 		phase = lerp(phase, 0.0, 5.0 * delta)
 	
-	# Actualizar fase de reposo (Idle) y peso de blending
 	var is_moving = (is_walking and walk_speed > 0.1) or is_riding or current_jump_state != JumpState.IDLE
 	idle_weight = lerp(idle_weight, 0.0 if is_moving else 1.0, 4.0 * delta)
 	
-	# Calcular peso de carrera (0 = Caminar lento, 1 = Sprint)
 	var target_run = clamp((walk_speed - 1.0) / 0.8, 0.0, 1.0)
 	run_weight = lerp(run_weight, target_run if is_walking else 0.0, 5.0 * delta)
 	
 	idle_phase += delta * 1.5 
 	if idle_phase > TAU: idle_phase -= TAU
 	
-	# --- ACTUALIZAR SUAVIZADO DE PARÁMETROS ---
 	var targets = _get_jump_targets()
 	curr_crouch = lerp(curr_crouch, targets.crouch, delta * animation_smoothing)
 	curr_arm_raise = lerp(curr_arm_raise, targets.arm_raise, delta * animation_smoothing)

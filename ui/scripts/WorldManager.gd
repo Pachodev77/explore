@@ -75,17 +75,38 @@ func _ready():
 	
 	setup_shared_resources()
 	
-	# Generar área Inicial INMEDIATA (3x3)
+	# 1. Calcular altura exacta del terreno en (0,0) para spawn seguro
+	var h_val = height_noise.get_noise_2d(0, 0)
+	# Detectar bioma en 0,0 para saber el multiplicador de altura
+	var b_noise_val = biome_noise.get_noise_2d(0, 0)
+	var deg = rad2deg(atan2(0, 0)) + (b_noise_val * 120.0) # Simplificado para (0,0)
+	var h_mult = H_PRAIRIE
+	if deg > 45 and deg <= 135: h_mult = H_JUNGLE
+	elif deg > -45 and deg <= 45: h_mult = H_DESERT
+	elif deg > -135 and deg <= -45: h_mult = H_SNOW
+	
+	var spawn_y = h_val * h_mult + 5.0 # 5 metros por encima del suelo real
+	player.global_transform.origin = Vector3(0, spawn_y, 0)
+	
+	# 2. Desactivar física temporalmente para que no caiga mientras cargan los tiles
+	if player.has_method("set_physics_process"):
+		player.set_physics_process(false)
+
+	# 3. Generar área Inicial INMEDIATA (3x3)
 	var p_coords = get_tile_coords(player.global_transform.origin)
 	for x in range(int(p_coords.x) - 1, int(p_coords.x) + 2):
 		for z in range(int(p_coords.y) - 1, int(p_coords.y) + 2):
 			spawn_tile(x, z)
 	
-	# Colocar al jugador a salvo ligeramente por encima del suelo
-	player.translation.y = 2.0
+	# 4. ESPERAR a que la colisión se genere (el GroundTile inicial tiene yields)
+	yield(get_tree().create_timer(0.3), "timeout")
 	
-	# SPAWN CABALLO Y VACA DE PRUEBA
-	yield(get_tree(), "idle_frame") # Esperar a que el mapa empiece a cargar
+	# 5. Activar física y colocar al jugador
+	if player.has_method("set_physics_process"):
+		player.set_physics_process(true)
+	
+	# SPAWN CABALLO Y ANIMALES DE PRUEBA
+	yield(get_tree(), "idle_frame")
 	
 	var horse_scene = load("res://ui/scenes/Horse.tscn")
 	if horse_scene:
@@ -145,7 +166,8 @@ func update_tiles():
 			
 			if not active_tiles.has(coords):
 				if not spawn_queue.has(coords):
-					spawn_queue.append(coords)
+					# Insertar al principio para priorizar cercanía si no hay ordenamiento
+					spawn_queue.push_back(coords)
 	
 	# LIMPIEZA DE COLA
 	var filtered_queue = []
@@ -177,30 +199,100 @@ func _sort_by_dist(a, b):
 
 
 # --- SETTLEMENT & ROAD LOGIC ---
-const SUPER_CHUNK_SIZE = 5 # Increased from 3 to 5 (Lower density)
+const SUPER_CHUNK_SIZE = 5 
 var settlement_seed = 0
+var road_cache = {} # Cache for segments: { "sc_x,sc_z": [ {p1, p2}, ... ] }
 
 func _init_settlement_seed():
 	settlement_seed = noise.seed + 999
 
 func get_settlement_coords(sc_x_in, sc_z_in):
-	# Deterministic random based on super chunk coords
 	var sc_x = int(sc_x_in)
 	var sc_z = int(sc_z_in)
-	
-	# FORCE START SETTLEMENT NEAR (0,0)
-	if sc_x == 0 and sc_z == 0:
-		return Vector2(1, 0) # Fixed at (1,0) tile, visible from spawn
+	if sc_x == 0 and sc_z == 0: return Vector2(1, 0)
 		
 	var hash_val = (sc_x * 73856093) ^ (sc_z * 19349663) ^ settlement_seed
 	var rng = RandomNumberGenerator.new()
 	rng.seed = hash_val
-	
-	# Random position within the super chunk (keep away from edges for easier connection)
 	var rel_x = rng.randi_range(0, SUPER_CHUNK_SIZE - 1)
 	var rel_z = rng.randi_range(0, SUPER_CHUNK_SIZE - 1)
-	
 	return Vector2(sc_x * SUPER_CHUNK_SIZE + rel_x, sc_z * SUPER_CHUNK_SIZE + rel_z)
+
+func _get_road_segments_cached(sc_x, sc_z):
+	var key = str(sc_x) + "," + str(sc_z)
+	if road_cache.has(key): return road_cache[key]
+	
+	var segments = []
+	# Horizontal: Prev -> Curr
+	var s_prev = get_settlement_coords(sc_x - 1, sc_z)
+	var s_curr = get_settlement_coords(sc_x, sc_z)
+	segments.append_array(_generate_road_points(s_prev, s_curr, true))
+	
+	# Horizontal: Curr -> Next
+	var s_next = get_settlement_coords(sc_x + 1, sc_z)
+	segments.append_array(_generate_road_points(s_curr, s_next, true))
+	
+	# Vertical: Up -> Current
+	if _has_vertical_road(sc_x, sc_z - 1):
+		var s_up = get_settlement_coords(sc_x, sc_z - 1)
+		segments.append_array(_generate_road_points(s_up, s_curr, false))
+		
+	# Vertical: Current -> Down
+	if _has_vertical_road(sc_x, sc_z):
+		var s_down = get_settlement_coords(sc_x, sc_z + 1)
+		segments.append_array(_generate_road_points(s_curr, s_down, false))
+	
+	road_cache[key] = segments
+	
+	# Limit cache size
+	if road_cache.size() > 50:
+		road_cache.erase(road_cache.keys()[0])
+		
+	return segments
+
+func _generate_road_points(t_start, t_end, is_horizontal):
+	var points = []
+	var start_pos = Vector3.ZERO
+	var end_pos = Vector3.ZERO
+	var cp1 = Vector3.ZERO
+	var cp2 = Vector3.ZERO
+	
+	if is_horizontal:
+		start_pos = Vector3(t_start.x * tile_size + 33.0, 0, t_start.y * tile_size)
+		end_pos = Vector3(t_end.x * tile_size - 33.0, 0, t_end.y * tile_size)
+		var dist = start_pos.distance_to(end_pos)
+		var handle_len = dist * 0.4
+		var curv_rng = RandomNumberGenerator.new()
+		curv_rng.seed = (int(t_start.x + t_end.x) * 49297) ^ (int(t_start.y + t_end.y) * 91823) ^ settlement_seed
+		var curve_z = curv_rng.randf_range(-40.0, 40.0)
+		cp1 = start_pos + Vector3(handle_len, 0, curve_z)
+		cp2 = end_pos - Vector3(handle_len, 0, -curve_z)
+	else:
+		var sc_x = floor(t_start.x / SUPER_CHUNK_SIZE)
+		var sc_z = floor(t_start.y / SUPER_CHUNK_SIZE)
+		var s_east = get_settlement_coords(sc_x + 1, sc_z)
+		var h_start = Vector3(t_start.x * tile_size + 33.0, 0, t_start.y * tile_size)
+		var h_end = Vector3(s_east.x * tile_size - 33.0, 0, s_east.y * tile_size)
+		var h_mid = (h_start + h_end) * 0.5
+		start_pos = h_mid
+		end_pos = Vector3(t_end.x * tile_size, 0, t_end.y * tile_size - 33.0)
+		var dist = start_pos.distance_to(end_pos)
+		var handle_len = dist * 0.4
+		var curv_rng_v = RandomNumberGenerator.new()
+		curv_rng_v.seed = (int(t_start.x) * 73821) ^ (int(t_start.y) * 19283) ^ settlement_seed
+		var curve_x = curv_rng_v.randf_range(-40.0, 40.0)
+		cp1 = start_pos + Vector3(curve_x, 0, handle_len)
+		cp2 = end_pos - Vector3(-curve_x, 0, handle_len)
+	
+	var steps = 12
+	var prev_p = Vector2(start_pos.x, start_pos.z)
+	for i in range(1, steps + 1):
+		var t = float(i) / steps
+		var p3 = _cubic_bezier(start_pos, cp1, cp2, end_pos, t)
+		var curr_p = Vector2(p3.x, p3.z)
+		points.append({"a": prev_p, "b": curr_p})
+		prev_p = curr_p
+	return points
 
 func is_settlement_tile(x, z):
 	var sc_x = floor(float(x) / SUPER_CHUNK_SIZE)
@@ -208,53 +300,41 @@ func is_settlement_tile(x, z):
 	var sett_coords = get_settlement_coords(int(sc_x), int(sc_z))
 	return int(sett_coords.x) == x and int(sett_coords.y) == z
 
-func get_road_curve_points(_x, _z):
-	# Used by MapRenderer ONLY? No, MapRenderer implements/copies this logic.
-	# We should update MapRenderer separately.
-	return [] 
-
 func get_road_influence(gx, gz):
-	# Calculate influence of roads at global position (gx, gz)
-	# Returns { "is_road": bool, "weight": float, "height": float }
-	
 	var tile_x = floor(gx / tile_size)
 	var tile_z = floor(gz / tile_size)
-	
 	var sc_x = floor(tile_x / SUPER_CHUNK_SIZE)
 	var sc_z = floor(tile_z / SUPER_CHUNK_SIZE)
 	
-	var dist = 9999.0
+	var segments = _get_road_segments_cached(sc_x, sc_z)
+	var min_d = 9999.0
+	var pos_2d = Vector2(gx, gz)
 	
-	# --- HORIZONTAL ROADS ---
-	# Previous -> Current
-	var s_prev = get_settlement_coords(sc_x - 1, sc_z)
-	var s_curr = get_settlement_coords(sc_x, sc_z)
-	dist = min(dist, _dist_to_road_segment(gx, gz, s_prev, s_curr, true))
-	
-	# Current -> Next
-	var s_next = get_settlement_coords(sc_x + 1, sc_z)
-	dist = min(dist, _dist_to_road_segment(gx, gz, s_curr, s_next, true))
-	
-	# --- VERTICAL ROADS (Intersections) ---
-	# We add vertical roads with 50% chance per SC column/row
-	# Check Vertical: Up -> Current
-	if _has_vertical_road(sc_x, sc_z - 1):
-		var s_up = get_settlement_coords(sc_x, sc_z - 1)
-		dist = min(dist, _dist_to_road_segment(gx, gz, s_up, s_curr, false))
+	for seg in segments:
+		# FAST BOUNDING BOX per segment
+		if abs(gx - seg.a.x) > 40.0 and abs(gx - seg.b.x) > 40.0: continue
+		if abs(gz - seg.a.y) > 40.0 and abs(gz - seg.b.y) > 40.0: continue
 		
-	# Check Vertical: Current -> Down
-	if _has_vertical_road(sc_x, sc_z):
-		var s_down = get_settlement_coords(sc_x, sc_z + 1)
-		dist = min(dist, _dist_to_road_segment(gx, gz, s_curr, s_down, false))
+		var d = _dist_to_segment_2d_optimized(pos_2d, seg.a, seg.b)
+		if d < min_d: 
+			min_d = d
+			if min_d < 1.0: break # Early exit
 	
-	var road_width = 12.0 # Wider (was 8.0)
-	var falloff = 6.0 # Softer edge (was 4.0)
+	var road_width = 12.0
+	var falloff = 6.0
 	
-	if dist < (road_width + falloff):
-		var w = 1.0 - clamp((dist - road_width) / falloff, 0.0, 1.0)
-		return { "is_road": true, "weight": w, "height": 2.1 } # 2.1 matches settlement height approx
+	# Detectar si estamos en el borde para los árboles
+	var is_on_edge = false
+	var edge_side = 0 # -1 o 1
+	var tree_edge_dist = 14.5 # Justo en el borde de la carretera
+	if abs(min_d - tree_edge_dist) < 1.5:
+		is_on_edge = true
 	
-	return { "is_road": false, "weight": 0.0, "height": 0.0 }
+	if min_d < (road_width + falloff):
+		var w = 1.0 - clamp((min_d - road_width) / falloff, 0.0, 1.0)
+		return { "is_road": true, "weight": w, "height": 2.1, "is_edge": is_on_edge, "dist": min_d }
+	
+	return { "is_road": false, "weight": 0.0, "height": 0.0, "is_edge": is_on_edge, "dist": min_d }
 
 func _has_vertical_road(sc_x, sc_z):
 	# Deterministic check: 40% chance of vertical road starting from this chunk southwards
@@ -458,8 +538,19 @@ func _process(delta):
 					break 
 	
 	# SPAWN QUEUE: Sigue siendo 1 por frame para máxima fluidez al entrar en nuevas zonas
+	# SPAWN QUEUE: Máximo 1 por frame para evitar picos de CPU (lag)
 	if spawn_queue.size() > 0:
-		var coords = spawn_queue.pop_front()
+		# Priorizar el más cercano al jugador siempre
+		var best_idx = 0
+		var min_d = 99999.0
+		for i in range(min(spawn_queue.size(), 8)): # Revisar solo los primeros para no pesar mucho
+			var d = p_pos.distance_to(Vector3(spawn_queue[i].x * tile_size, 0, spawn_queue[i].y * tile_size))
+			if d < min_d:
+				min_d = d
+				best_idx = i
+		
+		var coords = spawn_queue[best_idx]
+		spawn_queue.remove(best_idx)
 		spawn_tile(int(coords.x), int(coords.y))
 	
 	var water = get_node_or_null("WaterPlane")

@@ -12,6 +12,8 @@ var anim_phase = 0.0
 var move_timer = 0.0
 var target_dir = Vector3.ZERO
 var is_jumping = false
+var is_eating = true
+var eating_weight = 0.0
 var biome_type = 2 # 2: Snow
 
 var player_node = null
@@ -33,8 +35,9 @@ func _ready():
 func setup_animal(type):
 	biome_type = type
 
+var physics_tick = 0
+
 func _process(delta):
-	# OPTIMIZACIÓN: El chequeo de distancia debe estar en _process
 	check_timer -= delta
 	if check_timer <= 0:
 		check_timer = 1.0 + rand_range(0.0, 0.4)
@@ -42,46 +45,59 @@ func _process(delta):
 			var d = global_transform.origin.distance_to(player_node.global_transform.origin)
 			var is_active = d < active_dist
 			set_physics_process(is_active)
-			if mesh_gen: mesh_gen.visible = d < 180.0
+			if mesh_gen: mesh_gen.visible = d < 120.0 # Reducido para móviles
 			
 	if not is_physics_processing():
 		return
 
 func _physics_process(delta):
-	if not is_on_floor():
-		velocity.y -= gravity * delta
+	physics_tick += 1
+	if physics_tick % 2 != 0: return
 	
-	move_timer -= delta
+	var ed = delta * 2.0
+	
+	if not is_on_floor():
+		velocity.y -= gravity * ed
+	
+	move_timer -= ed
 	if move_timer <= 0:
-		if target_dir.length() > 0:
-			target_dir = Vector3.ZERO
-			move_timer = rand_range(2, 5)
-		else:
+		if is_eating:
+			# Dejar de comer, empezar a moverse
+			is_eating = false
 			var rand_angle = rand_range(0, TAU)
 			target_dir = Vector3(sin(rand_angle), 0, cos(rand_angle))
-			move_timer = rand_range(2, 4)
+			move_timer = rand_range(3, 6)
 			
-			# Probabilidad ALTA de saltito al empezar a caminar (0.6)
-			if randf() < 0.6:
+			if randf() < 0.4: # Probabilidad de salto al empezar a moverse
 				velocity.y = 8.5
 				is_jumping = true
+		else:
+			# Dejar de moverse, empezar a comer
+			is_eating = true
+			target_dir = Vector3.ZERO
+			move_timer = rand_range(5, 12)
 	
 	if is_on_floor() and velocity.y <= 0:
 		is_jumping = false
 
 	if target_dir.length() > 0.1:
 		var target_basis = Transform.IDENTITY.looking_at(target_dir, Vector3.UP).basis
-		global_transform.basis = global_transform.basis.slerp(target_basis, rotation_speed * delta)
+		global_transform.basis = global_transform.basis.slerp(target_basis, rotation_speed * ed)
 		
 		var current_speed = speed if not is_jumping else speed * 1.5
 		velocity.x = target_dir.x * current_speed
 		velocity.z = target_dir.z * current_speed
 	else:
-		velocity.x = lerp(velocity.x, 0, 5 * delta)
-		velocity.z = lerp(velocity.z, 0, 5 * delta)
+		velocity.x = lerp(velocity.x, 0, 5 * ed)
+		velocity.z = lerp(velocity.z, 0, 5 * ed)
 
 	velocity = move_and_slide(velocity, Vector3.UP)
-	_update_animation(delta)
+	
+	# Mezclar peso de animación de comer
+	var target_eat_w = 1.0 if (is_eating and Vector3(velocity.x,0,velocity.z).length() < 0.1) else 0.0
+	eating_weight = lerp(eating_weight, target_eat_w, 2.5 * delta)
+	
+	_update_animation(ed)
 
 func _update_animation(delta):
 	var h_speed = Vector3(velocity.x, 0, velocity.z).length()
@@ -121,6 +137,14 @@ func _animate_goat(p):
 			var knee = max(0, -cos(lp)) * 1.2 * s_ratio
 			p_nodes["joint_"+leg].rotation.x = -knee
 
-	# Cabeza (Moviéndose curiosamente)
+	# Cabeza (Moviéndose curiosamente y comer)
 	if "head" in p_nodes:
-		p_nodes.head.rotation.y = sin(OS.get_ticks_msec() * 0.005) * 0.2
+		var look_anim = sin(OS.get_ticks_msec() * 0.005) * 0.2 * (1.0 - eating_weight)
+		p_nodes.head.rotation.y = look_anim
+		
+		if "neck_base" in p_nodes:
+			# Las cabras bajan el cuello en ángulo pronunciado
+			var eat_pose = -eating_weight * deg2rad(90.0)
+			p_nodes.neck_base.rotation.x = eat_pose
+			# Cabeza extendida para comer entre rocas/pasto
+			p_nodes.head.rotation.x = eating_weight * deg2rad(30.0)

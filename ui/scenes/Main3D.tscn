@@ -48,7 +48,7 @@ shadow_enabled = true
 directional_shadow_mode = 1
 directional_shadow_blend_splits = true
 directional_shadow_depth_range = 1
-directional_shadow_max_distance = 200.0
+directional_shadow_max_distance = 120.0
 
 [node name="DayNightCycle" type="Spatial" parent="."]
 script = ExtResource( 4 )

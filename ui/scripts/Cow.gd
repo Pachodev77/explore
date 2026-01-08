@@ -12,6 +12,7 @@ var anim_phase = 0.0
 var move_timer = 0.0
 var target_dir = Vector3.ZERO
 var is_eating = true
+var eating_weight = 0.0 # Suavizado para bajar la cabeza
 var biome_type = 0 # 0: Prairie
 
 var player_node = null
@@ -34,57 +35,63 @@ func _ready():
 func setup_animal(type):
 	biome_type = type
 
+var physics_tick = 0
+
 func _process(delta):
-	# OPTIMIZACIÓN: El chequeo de distancia debe estar en _process 
-	# para que siga funcionando aunque la física esté apagada.
 	check_timer -= delta
 	if check_timer <= 0:
-		check_timer = 1.0 + rand_range(0.0, 0.5) # Chequear cada segundo es suficiente
+		check_timer = 1.0 + rand_range(0.0, 0.5)
 		if player_node:
 			var d = global_transform.origin.distance_to(player_node.global_transform.origin)
 			var is_active = d < active_dist
 			set_physics_process(is_active)
-			
-			# Mostrar/Ocultar malla para ahorrar dibujado
-			if mesh_gen: mesh_gen.visible = d < 180.0
+			# Distancia de visibilidad reducida ligeramente para móviles
+			if mesh_gen: mesh_gen.visible = d < 120.0 
 			
 	if not is_physics_processing():
 		return
 
 func _physics_process(delta):
+	physics_tick += 1
+	if physics_tick % 2 != 0: return
+	
+	var ed = delta * 2.0 # Effective Delta
+	
 	# Gravedad
 	if not is_on_floor():
-		velocity.y -= gravity * delta
+		velocity.y -= gravity * ed
 	
-	# IA de vaca: Mucho tiempo comiendo, poco caminando
-	move_timer -= delta
+	# IA de vaca
+	move_timer -= ed
 	if move_timer <= 0:
 		if not is_eating:
 			is_eating = true
 			target_dir = Vector3.ZERO
-			move_timer = rand_range(10, 25) # Comer por mucho tiempo
+			move_timer = rand_range(10, 25)
 		else:
 			is_eating = false
 			var rand_angle = rand_range(0, TAU)
 			target_dir = Vector3(sin(rand_angle), 0, cos(rand_angle))
-			move_timer = rand_range(3, 6) # Caminar solo un poco
+			move_timer = rand_range(3, 6)
 	
 	# Rotación hacia el objetivo
 	if target_dir.length() > 0.1:
 		var target_basis = Transform.IDENTITY.looking_at(target_dir, Vector3.UP).basis
-		global_transform.basis = global_transform.basis.slerp(target_basis, rotation_speed * delta)
+		global_transform.basis = global_transform.basis.slerp(target_basis, rotation_speed * ed)
 		
-		var current_speed = speed
-		velocity.x = target_dir.x * current_speed
-		velocity.z = target_dir.z * current_speed
+		velocity.x = target_dir.x * speed
+		velocity.z = target_dir.z * speed
 	else:
-		velocity.x = lerp(velocity.x, 0, 2 * delta)
-		velocity.z = lerp(velocity.z, 0, 2 * delta)
+		velocity.x = lerp(velocity.x, 0, 2 * ed)
+		velocity.z = lerp(velocity.z, 0, 2 * ed)
 
 	velocity = move_and_slide(velocity, Vector3.UP)
 	
-	# Animación
-	_update_animation(delta)
+	# Mezclar peso de animación de comer
+	var target_eat_w = 1.0 if (is_eating and Vector3(velocity.x,0,velocity.z).length() < 0.1) else 0.0
+	eating_weight = lerp(eating_weight, target_eat_w, 2.0 * delta)
+	
+	_update_animation(ed)
 
 func _update_animation(delta):
 	var h_speed = Vector3(velocity.x, 0, velocity.z).length()
@@ -127,3 +134,13 @@ func _animate_cow(p):
 	# Cola
 	if "tail" in p_nodes:
 		p_nodes.tail.rotation.z = sin(OS.get_ticks_msec() * 0.002) * 0.3
+		
+	# Cuello y Cabeza (Comer)
+	if "neck_base" in p_nodes:
+		# Bajar el cuello pesadamente
+		var eat_pose = -eating_weight * deg2rad(80.0)
+		p_nodes.neck_base.rotation.x = eat_pose
+		
+		if "head" in p_nodes:
+			# Extender la cabeza un poco al comer
+			p_nodes.head.rotation.x = eating_weight * deg2rad(20.0)

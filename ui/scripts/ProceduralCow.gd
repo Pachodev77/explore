@@ -1,28 +1,19 @@
 extends Spatial
 
-# --- VACA PROCEDURAL (ESTILO LOW-POLY ORGÁNICO) ---
-# Basado en el sistema del caballo pero con proporciones de bovino
+# --- VACA PROCEDURAL PRO V3 (GEOMETRÍA ORGÁNICA) ---
+# Sistema de alto nivel con SurfaceTool y fusión de normales.
 
 export var hu = 0.6 
 export var color = Color(0.9, 0.9, 0.9) # Blanco base
-export var spot_color = Color(0.1, 0.1, 0.1) # Manchas negras
-export var skin_color = Color(0.9, 0.7, 0.7) # Hocico/Ubres
+export var spot_color = Color(0.1, 0.1, 0.1)
+export var skin_color = Color(0.9, 0.7, 0.7)
 
 var parts = {} 
 var master_material: SpatialMaterial
 
-# OPTIMIZACIÓN: Mallas primitivas compartidas para todo el rebaño
-var sphere_mesh = SphereMesh.new()
-var cylinder_mesh = CylinderMesh.new()
-
 func _ready():
-	sphere_mesh.radial_segments = 8
-	sphere_mesh.rings = 6
-	cylinder_mesh.radial_segments = 8
-	cylinder_mesh.rings = 1
-	
 	master_material = SpatialMaterial.new()
-	master_material.albedo_color = color
+	master_material.albedo_color = Color(1, 1, 1) # Usar blanco base
 	master_material.roughness = 0.8
 	master_material.params_diffuse_mode = SpatialMaterial.DIFFUSE_BURLEY
 	_generate_structure()
@@ -31,136 +22,118 @@ func _generate_structure():
 	for c in get_children(): c.queue_free()
 	parts.clear()
 	
-	# --- ANATOMÍA ---
-	var leg_height = hu * 1.5 # Más corta que el caballo
-	var body_z_start = -hu * 1.4 
-	var body_z_end = hu * 1.2
-	
-	# 1. CUERPO (Más ancho y robusto)
+	var leg_h = hu * 1.5
 	var body_root = Spatial.new()
 	body_root.name = "BodyRoot"
-	body_root.translation = Vector3(0, leg_height, 0)
+	body_root.translation = Vector3(0, leg_h, 0)
 	add_child(body_root)
 	parts["body"] = body_root
 
-	# Ribcage (Caja torácica ancha)
-	var rib_pos = Vector3(0, hu*0.1, body_z_start + hu*0.6)
-	_create_part_mesh(body_root, "Ribcage", rib_pos, Vector3(hu*0.85, hu*0.9, hu*1.1), "ellipsoid")
+	# 1. TORSO (Estructura Pesada)
+	var rib_p = Vector3(0, hu*0.1, -hu*0.6)
+	_create_part_mesh(body_root, "Chest", rib_p, Vector3(hu*0.9, hu*0.95, hu*1.1), "ellipsoid")
 	
-	# Hindquarters (Traseros anchos)
-	var rear_pos = Vector3(0, hu*0.05, body_z_end - hu*0.7)
-	_create_part_mesh(body_root, "Hindquarters", rear_pos, Vector3(hu*0.9, hu*0.9, hu*1.0), "ellipsoid")
+	var rear_p = Vector3(0, hu*0.05, hu*0.6)
+	_create_part_mesh(body_root, "Hind", rear_p, Vector3(hu*0.95, hu*0.95, hu*1.0), "ellipsoid")
 	
-	# Belly (Panza caída)
-	var mid_pos = (rib_pos + rear_pos) * 0.5 + Vector3(0, -hu*0.2, 0)
-	_create_part_mesh(body_root, "Belly", mid_pos, Vector3(hu*0.8, hu*0.85, hu*1.0), "ellipsoid")
+	var belly_p = (rib_p + rear_p) * 0.5 + Vector3(0, -hu*0.15, 0)
+	_create_part_mesh(body_root, "Belly", belly_p, Vector3(hu*0.85, hu*0.88, hu*0.95), "ellipsoid")
 
-	# 2. CUELLO Y CABEZA (Cuello corto y grueso)
+	# 2. CUELLO Y CABEZA
 	var neck_base = Spatial.new()
-	neck_base.translation = rib_pos + Vector3(0, hu*0.2, -hu*0.8)
+	neck_base.name = "NeckBase"
+	neck_base.translation = rib_p + Vector3(0, hu*0.3, -hu*0.7)
 	body_root.add_child(neck_base)
+	parts["neck_base"] = neck_base
 	
-	var neck_v = Vector3(0, hu * 0.4, -hu * 0.2)
-	_create_part_mesh(neck_base, "Neck", neck_v*0.5, Vector3(hu*0.5, hu*0.45, 0), "tapered", neck_v, 0.7)
+	var neck_v = Vector3(0, hu * 0.45, -hu * 0.3)
+	_create_part_mesh(neck_base, "Neck", neck_v*0.5, Vector3(hu*0.55, hu*0.48, 0), "tapered", neck_v, 0.8)
 
-	var head_node = Spatial.new()
-	head_node.translation = neck_v
-	neck_base.add_child(head_node)
-	parts["head"] = head_node
+	var head_n = Spatial.new()
+	head_n.name = "Head"
+	head_n.translation = neck_v
+	neck_base.add_child(head_n)
+	parts["head"] = head_n
 	
-	# Cabeza: Frente ancha
-	var head_main_v = Vector3(0, 0, -hu * 0.3)
-	_create_part_mesh(head_node, "HeadMain", head_main_v*0.5, Vector3(hu*0.35, hu*0.3, 0), "tapered", head_main_v, 0.8)
+	# Cabeza: Gran frente y hocico
+	var skull_v = Vector3(0, 0, -hu*0.35)
+	_create_part_mesh(head_n, "Skull", skull_v*0.5, Vector3(hu*0.38, hu*0.32, 0), "tapered", skull_v, 0.8)
 	
-	# Hocico cuadrado (Muzzle)
-	var muzzle_v = Vector3(0, -hu*0.15, -hu*0.4)
-	_create_part_mesh(head_node, "Muzzle", head_main_v + muzzle_v*0.5, Vector3(hu*0.28, hu*0.22, 0), "tapered", muzzle_v, 0.8)
+	var muzzle_v = Vector3(0, -hu*0.2, -hu*0.4)
+	_create_part_mesh(head_n, "Muzzle", skull_v + muzzle_v*0.5, Vector3(hu*0.3, hu*0.25, 0), "tapered", muzzle_v, 0.85, skin_color)
 
-	# CUERNOS (Horns)
-	for side in [-1, 1]:
-		var horn_start = head_main_v + Vector3(hu * 0.25 * side, hu * 0.2, 0)
-		var horn_v = Vector3(hu * 0.3 * side, hu * 0.2, -hu * 0.1)
-		_create_part_mesh(head_node, "Horn" + str(side), horn_start + horn_v*0.5, Vector3(hu*0.08, hu*0.04, 0), "tapered", horn_v, 0.9, Color(0.8, 0.8, 0.7))
+	# Cuernos (Cortos) y Orejas
+	for s in [-1, 1]:
+		var h_dir = Vector3(hu*0.3*s, hu*0.1, -hu*0.1)
+		_create_part_mesh(head_n, "Horn"+str(s), skull_v + Vector3(hu*0.2*s, hu*0.2, 0), Vector3(hu*0.08, hu*0.05, 0), "tapered", h_dir, 0.9, Color(0.8, 0.8, 0.7))
+		_create_part_mesh(head_n, "Ear"+str(s), skull_v + Vector3(hu*0.3*s, 0.1, 0), Vector3(hu*0.15, hu*0.08, hu*0.05), "ellipsoid")
 
-	# OREJAS (Ears) - Más laterales
-	for side in [-1, 1]:
-		var ear_pos = head_main_v + Vector3(hu * 0.3 * side, hu * 0.1, 0)
-		_create_part_mesh(head_node, "Ear" + str(side), ear_pos, Vector3(hu*0.12, hu*0.08, hu*0.05), "ellipsoid")
+	# UBRE (Detalle Clave)
+	_create_part_mesh(body_root, "Udder", belly_p + Vector3(0, -hu*0.4, hu*0.3), Vector3(hu*0.38, hu*0.28, hu*0.38), "ellipsoid", Vector3.ZERO, 1.0, skin_color)
 
-	# 3. UBRE (Udder) - Debajo de los traseros
-	_create_part_mesh(body_root, "Udder", mid_pos + Vector3(0, -hu*0.4, hu*0.4), Vector3(hu*0.35, hu*0.25, hu*0.35), "ellipsoid", Vector3.ZERO, 0.7, skin_color)
-
-	# 4. PATAS (Más cortas y gruesas)
-	var leg_x = hu * 0.45
-	var f_leg_z = body_z_start + hu * 0.2
-	var b_leg_z = body_z_end - hu * 0.4
-	
-	var leg_names = ["FL", "FR", "BL", "BR"]
+	# 3. PATAS (Robustas)
+	var lx = hu * 0.45; var fz = -hu * 1.0; var bz = hu * 0.8
+	var legs = ["FL", "FR", "BL", "BR"]
 	for i in range(4):
-		var name = leg_names[i]
-		var is_front = i < 2
-		var side = -1 if i % 2 == 0 else 1
-		var z = f_leg_z if is_front else b_leg_z
+		var s = -1 if i % 2 == 0 else 1
+		var is_f = i < 2
+		var z = fz if is_f else bz
+		var l_root = Spatial.new()
+		l_root.translation = Vector3(lx*s, 0, z)
+		body_root.add_child(l_root)
+		parts["leg_"+legs[i].to_lower()] = l_root
 		
-		var leg_root = Spatial.new()
-		leg_root.name = "Leg_" + name
-		leg_root.translation = Vector3(leg_x * side, 0, z)
-		body_root.add_child(leg_root)
-		parts["leg_" + name.to_lower()] = leg_root
-		
-		var upper_v = Vector3(0, -hu*0.8, 0)
-		_create_part_mesh(leg_root, "Upper", upper_v*0.5, Vector3(hu*0.25, hu*0.2, 0), "tapered", upper_v, 0.6)
-		
-		var mid_joint = Spatial.new()
-		mid_joint.translation = upper_v
-		leg_root.add_child(mid_joint)
-		parts["joint_" + name.to_lower()] = mid_joint
-		
-		var lower_v = Vector3(0, -hu*0.7, 0)
-		_create_part_mesh(mid_joint, "Lower", lower_v*0.5, Vector3(hu*0.18, hu*0.14, 0), "tapered", lower_v, 0.6)
-		
-		# Pezuña (Hoof) - Segmentada
-		_create_part_mesh(mid_joint, "Hoof", lower_v + Vector3(0, hu*0.05, 0), Vector3(hu*0.16, hu*0.1, hu*0.18), "ellipsoid", Vector3.ZERO, 0.7, Color(0.2, 0.2, 0.2))
+		var u_v = Vector3(0, -hu*0.8, 0)
+		_create_part_mesh(l_root, "U", u_v*0.5, Vector3(hu*0.28, hu*0.22, 0), "tapered", u_v, 0.6)
+		var joint = Spatial.new(); joint.translation = u_v
+		l_root.add_child(joint); parts["joint_"+legs[i].to_lower()] = joint
+		var lo_v = Vector3(0, -hu*0.7, 0)
+		_create_part_mesh(joint, "L", lo_v*0.5, Vector3(hu*0.2, hu*0.15, 0), "tapered", lo_v, 0.65)
+		_create_part_mesh(joint, "Hoof", lo_v, Vector3(hu*0.18, hu*0.1, hu*0.2), "ellipsoid", Vector3.ZERO, 1.0, Color(0.15, 0.15, 0.15))
 
-	# 5. COLA (Fina con mechón)
-	var tail_root = Spatial.new()
-	tail_root.translation = rear_pos + Vector3(0, hu*0.2, hu*0.95)
-	body_root.add_child(tail_root)
-	parts["tail"] = tail_root
-	
-	var tail_v = Vector3(0, -hu*1.2, hu*0.1)
-	_create_part_mesh(tail_root, "Tail", tail_v*0.5, Vector3(hu*0.04, hu*0.04, 0), "tapered", tail_v, 0.9)
-	# Mechón final
-	_create_part_mesh(tail_root, "TailTuft", tail_v, Vector3(hu*0.1, hu*0.15, hu*0.1), "ellipsoid", Vector3.ZERO, 0.7, spot_color)
+	# 4. COLA
+	var t_root = Spatial.new(); t_root.translation = rear_p + Vector3(0, hu*0.1, hu*0.95); body_root.add_child(t_root)
+	parts["tail"] = t_root
+	var t_v = Vector3(0, -hu*1.1, hu*0.1)
+	_create_part_mesh(t_root, "T", t_v*0.5, Vector3(hu*0.05, hu*0.05, 0), "tapered", t_v, 0.9)
 
 func _create_part_mesh(parent, p_name, pos, p_scale, type, dir = Vector3.ZERO, overlap = 0.7, p_color = null):
-	var mi = MeshInstance.new()
-	mi.name = p_name
-	parent.add_child(mi)
-	mi.translation = pos
-	
-	# Usar mallas primitivas para máxima velocidad (SIN st.commit)
-	if type == "ellipsoid":
-		mi.mesh = sphere_mesh
-		mi.scale = p_scale
-	elif type == "tapered":
-		mi.mesh = cylinder_mesh
-		# Orientar cilindro hacia dir
-		var length = dir.length() * overlap * 2.0
-		mi.scale = Vector3(p_scale.x, length, p_scale.y) # p_scale.y es el grosor secundario
-		
-		if dir.length() > 0.001:
-			var up = dir.normalized()
-			var look_pos = mi.global_transform.origin + up
-			if up.distance_to(Vector3.UP) < 0.01:
-				mi.look_at(mi.global_transform.origin + Vector3.RIGHT, up)
-			else:
-				mi.look_at(look_pos, Vector3.UP)
-			mi.rotate_object_local(Vector3.RIGHT, deg2rad(90))
+	var mi = MeshInstance.new(); mi.name = p_name; parent.add_child(mi); mi.translation = pos
+	var st = SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var mat = master_material if not p_color else master_material.duplicate()
+	if p_color: mat.albedo_color = p_color
+	st.set_material(mat)
+	if type == "ellipsoid": _add_ellipsoid(st, Vector3.ZERO, p_scale)
+	elif type == "tapered": _add_tapered(st, -dir*overlap, dir*overlap, p_scale.x, p_scale.y)
+	mi.mesh = st.commit(); return mi
 
-	var mat = master_material
-	if p_color:
-		mat = master_material.duplicate()
-		mat.albedo_color = p_color
-	mi.material_override = mat
-	return mi
+func _add_ellipsoid(st, center, scale):
+	var steps = 12
+	for i in range(steps):
+		var lat = PI * i / steps; var lat_n = PI * (i + 1) / steps
+		for j in range(steps * 2):
+			var lon = 2 * PI * j / (steps * 2); var lon_n = 2 * PI * (j + 1) / (steps * 2)
+			var p1 = _get_p(lat, lon, scale); var p2 = _get_p(lat_n, lon, scale)
+			var p3 = _get_p(lat, lon_n, scale); var p4 = _get_p(lat_n, lon_n, scale)
+			st.add_normal(p1.normalized()); st.add_vertex(p1)
+			st.add_normal(p2.normalized()); st.add_vertex(p2)
+			st.add_normal(p3.normalized()); st.add_vertex(p3)
+			st.add_normal(p2.normalized()); st.add_vertex(p2)
+			st.add_normal(p4.normalized()); st.add_vertex(p4)
+			st.add_normal(p3.normalized()); st.add_vertex(p3)
+
+func _get_p(lat, lon, s): return Vector3(sin(lat)*cos(lon)*s.x, cos(lat)*s.y, sin(lat)*sin(lon)*s.z)
+
+func _add_tapered(st, p1, p2, r1, r2):
+	var dir = (p2 - p1).normalized(); var ref = Vector3.UP if abs(dir.dot(Vector3.UP)) < 0.9 else Vector3.FORWARD
+	var right = dir.cross(ref).normalized(); var fwd = right.cross(dir).normalized()
+	var steps = 12
+	for i in range(steps):
+		var a = 2 * PI * i / steps; var an = 2 * PI * (i + 1) / steps
+		var c = cos(a); var s = sin(a); var cn = cos(an); var sn = sin(an)
+		var v1 = p1 + (right*c + fwd*s)*r1; var v2 = p1 + (right*cn + fwd*sn)*r1
+		var v3 = p2 + (right*c + fwd*s)*r2; var v4 = p2 + (right*cn + fwd*sn)*r2
+		var n1 = (v1-p1).normalized(); var n2 = (v2-p1).normalized()
+		st.add_normal(n1); st.add_vertex(v1); st.add_normal(n1); st.add_vertex(v3)
+		st.add_normal(n2); st.add_vertex(v2); st.add_normal(n2); st.add_vertex(v2)
+		st.add_normal(n1); st.add_vertex(v3); st.add_normal(n2); st.add_vertex(v4)

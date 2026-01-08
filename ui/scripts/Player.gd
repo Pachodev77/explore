@@ -302,13 +302,24 @@ var current_horse = null
 
 func try_mount_horse():
 	# Buscar caballos cercanos
-	# Detectar (simplificado: buscamos grupo "horses" o clase Horse)
-	# Por ahora, detección manual fea pero funcional
 	var horses = get_tree().get_nodes_in_group("horses")
+	var nearest_horse = null
+	var min_dist = 99999.0
+	
 	for h in horses:
-		if h.global_transform.origin.distance_to(global_transform.origin) < 3.0:
-			mount(h)
-			break
+		var d = h.global_transform.origin.distance_to(global_transform.origin)
+		if d < min_dist:
+			min_dist = d
+			nearest_horse = h
+	
+	if nearest_horse:
+		if min_dist < 3.0:
+			mount(nearest_horse)
+		else:
+			# El caballo está lejos, lo llamamos
+			if nearest_horse.has_method("call_to_player"):
+				nearest_horse.call_to_player(self)
+				print("Caballo llamado: está a ", min_dist, " metros")
 
 func mount(horse_node):
 	if is_riding: return
