@@ -293,7 +293,7 @@ func _physics_process(delta):
 	
 	# Actualizar Animación Procedural
 	var horizontal_vel = Vector3(velocity.x, 0, velocity.z)
-	$WalkAnimator.update_physics_state(velocity.y, is_on_floor())
+	$WalkAnimator.update_physics_state(velocity.y, velocity, is_on_floor())
 	$WalkAnimator.set_walking(is_on_floor() and horizontal_vel.length() > 0.1, horizontal_vel.length())
 
 # --- FUNCIONES DE MONTURA ---
@@ -302,10 +302,6 @@ var current_horse = null
 
 func try_mount_horse():
 	# Buscar caballos cercanos
-	var area = get_world().direct_space_state
-	var shape = SphereShape.new()
-	shape.radius = 3.0
-	
 	# Detectar (simplificado: buscamos grupo "horses" o clase Horse)
 	# Por ahora, detección manual fea pero funcional
 	var horses = get_tree().get_nodes_in_group("horses")

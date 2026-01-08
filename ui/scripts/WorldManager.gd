@@ -14,6 +14,7 @@ var noise = OpenSimplexNoise.new()
 var height_noise = OpenSimplexNoise.new()
 var biome_noise = OpenSimplexNoise.new()
 var last_player_tile = Vector2.INF
+var update_timer = 0.0
 
 # Configuración de alturas base
 const H_SNOW = 45.0
@@ -36,7 +37,9 @@ var shared_res = {
 	"H_DESERT": H_DESERT,
 	"H_PRAIRIE": H_PRAIRIE,
 	"wood_mat": null, # Cached
-	"sign_mat": null  # Cached
+	"sign_mat": null, # Cached
+	"cow_scene": null,
+	"goat_scene": null
 }
 
 # Object Pool
@@ -81,12 +84,40 @@ func _ready():
 	# Colocar al jugador a salvo ligeramente por encima del suelo
 	player.translation.y = 2.0
 	
-	# SPAWN CABALLO DE PRUEBA
+	# SPAWN CABALLO Y VACA DE PRUEBA
+	yield(get_tree(), "idle_frame") # Esperar a que el mapa empiece a cargar
+	
 	var horse_scene = load("res://ui/scenes/Horse.tscn")
 	if horse_scene:
 		var horse = horse_scene.instance()
 		add_child(horse)
-		horse.translation = Vector3(10, 2.5, -10) # Cerca del jugador, elevado a 2.5 para evitar hundimiento
+		horse.global_transform.origin = Vector3(10, 5, -10)
+		print("DEBUG: Caballo SPAWNED en global ", horse.global_transform.origin)
+		
+	var cow_scene = load("res://ui/scenes/Cow.tscn")
+	if cow_scene:
+		# Vaca 1
+		var cow1 = cow_scene.instance()
+		add_child(cow1)
+		cow1.global_transform.origin = Vector3(15, 5, -15)
+		print("DEBUG: Vaca 1 SPAWNED en global ", cow1.global_transform.origin)
+		
+		# Vaca 2
+		var cow2 = cow_scene.instance()
+		add_child(cow2)
+		cow2.global_transform.origin = Vector3(-15, 5, 15)
+		print("DEBUG: Vaca 2 SPAWNED en global ", cow2.global_transform.origin)
+		
+	var goat_scene = load("res://ui/scenes/Goat.tscn")
+	if goat_scene:
+		var goat_pos = [Vector3(-10, 5, -15), Vector3(20, 5, 5), Vector3(0, 5, 20)]
+		for i in range(goat_pos.size()):
+			var goat = goat_scene.instance()
+			add_child(goat)
+			goat.global_transform.origin = goat_pos[i]
+			print("DEBUG: Cabra ", i+1, " SPAWNED en ", goat.global_transform.origin)
+	else:
+		print("DEBUG: ERROR - No se pudo cargar Goat.tscn")
 	
 	last_player_tile = p_coords
 	update_tiles()
@@ -96,17 +127,23 @@ func _ready():
 func update_tiles():
 	var p_pos = player.global_transform.origin
 	var player_coords = get_tile_coords(p_pos)
-	var new_active_keys = []
+	var new_active_coords = []
 	var x_int = int(player_coords.x)
 	var z_int = int(player_coords.y)
 	
 	for x in range(x_int - render_distance, x_int + render_distance + 1):
+		for z in range(z_int - render_distance, z_int + player_coords.y + 1):
+			# FIX: range stop for z was using z_int which is correct, 
+			# but I noticed a potential typo in my thought, let me re-write it correctly.
+			pass
+
+	# Clean re-implementation of update_tiles loop
+	for x in range(x_int - render_distance, x_int + render_distance + 1):
 		for z in range(z_int - render_distance, z_int + render_distance + 1):
 			var coords = Vector2(x, z)
-			var coord_key = str(x) + "," + str(z)
-			new_active_keys.append(coord_key)
+			new_active_coords.append(coords)
 			
-			if not active_tiles.has(coord_key):
+			if not active_tiles.has(coords):
 				if not spawn_queue.has(coords):
 					spawn_queue.append(coords)
 	
@@ -117,20 +154,22 @@ func update_tiles():
 			filtered_queue.append(c)
 	spawn_queue = filtered_queue
 	
-	spawn_queue.sort_custom(self, "_sort_by_dist")
+	# Ordenar por distancia solo si la cola es grande
+	if spawn_queue.size() > 5:
+		spawn_queue.sort_custom(self, "_sort_by_dist")
 	
 	# RECYCLE TILES (Pooling)
-	var keys_to_remove = []
-	for key in active_tiles.keys():
-		if not key in new_active_keys:
-			keys_to_remove.append(key)
+	var coords_to_remove = []
+	for coords in active_tiles.keys():
+		if not coords in new_active_coords:
+			coords_to_remove.append(coords)
 	
-	for key in keys_to_remove:
-		var tile = active_tiles[key]
-		# Mover al pool en lugar de borrar
-		remove_child(tile)
-		tile_pool.append(tile)
-		active_tiles.erase(key)
+	for coords in coords_to_remove:
+		var tile = active_tiles[coords]
+		if is_instance_valid(tile):
+			remove_child(tile)
+			tile_pool.append(tile)
+		active_tiles.erase(coords)
 
 func _sort_by_dist(a, b):
 	var p_coords = get_tile_coords(player.global_transform.origin)
@@ -169,7 +208,7 @@ func is_settlement_tile(x, z):
 	var sett_coords = get_settlement_coords(int(sc_x), int(sc_z))
 	return int(sett_coords.x) == x and int(sett_coords.y) == z
 
-func get_road_curve_points(x, z):
+func get_road_curve_points(_x, _z):
 	# Used by MapRenderer ONLY? No, MapRenderer implements/copies this logic.
 	# We should update MapRenderer separately.
 	return [] 
@@ -231,7 +270,6 @@ func _dist_to_road_segment(gx, gz, t_start, t_end, is_horizontal):
 	var cp2 = Vector3.ZERO
 	
 	if is_horizontal:
-		# East-West Connection: Gate offsets 33.0 (East/West gates)
 		start_pos = Vector3(t_start.x * tile_size + 33.0, 0, t_start.y * tile_size)
 		end_pos = Vector3(t_end.x * tile_size - 33.0, 0, t_end.y * tile_size)
 		
@@ -239,58 +277,28 @@ func _dist_to_road_segment(gx, gz, t_start, t_end, is_horizontal):
 		var dist = start_pos.distance_to(end_pos)
 		var handle_len = dist * 0.4
 		
-		# Deterministic Random for Curvature based on segment coords
 		var seed_x = int(t_start.x) + int(t_end.x)
 		var seed_z = int(t_start.y) + int(t_end.y)
 		var curv_rng = RandomNumberGenerator.new()
 		curv_rng.seed = (seed_x * 49297) ^ (seed_z * 91823) ^ settlement_seed
-		var curve_z = curv_rng.randf_range(-40.0, 40.0) # Wiggle Z
+		var curve_z = curv_rng.randf_range(-40.0, 40.0)
 		
 		cp1 = start_pos + Vector3(handle_len, 0, curve_z)
 		cp2 = end_pos - Vector3(handle_len, 0, -curve_z)
 	else:
-		# North-South Connection: Starts from MIDPOINT of Horizontal Road
-		# We need to approximate the midpoint of the horizontal road passing through t_start
-		# Horizontal segment is (t_start - 33m) to (t_next + 33m) roughly.
-		# Simplified: Start from t_start (which represents the settlement node logic) 
-		# actually represents the "Horizontal Road Body".
-		# Let's anchor it to the middle of the t_start -> t_start+1 segment.
-		
-		# NOTE: t_start here is passed as 's_up' or 's_curr' from get_road_influence.
-		# It refers to a settlement tile. 
-		# We want the midpoint between t_start and t_start+1(next settlement east).
-		# BUT wait, the loop passes s_up, s_curr. 
-		# Correct logic: Vertical road at column SC_X should connect:
-		# Point A: Midpoint of Road(Settlement[SC_X, SC_Z-1] -> Settlement[SC_X+1, SC_Z-1])
-		# Point B: North Gate of Settlement[SC_X, SC_Z] OR Midpoint of current road?
-		# User requested: "vertical intersections start in the middle of horizontal roads"
-		
-		# Let's implement: Midpoint(Horizontal Top) -> Midpoint(Horizontal Bottom)? 
-		# Or Midpoint(Horizontal Top) -> Settlement(Bottom).
-		# "intersecciones verticales... inicien en la mitad... entre los asentamientos" implies T-junction.
-		# So: Midpoint of Horizontal Road -> Connects to Settlement South.
-		
-		# Logic:
-		# Start = Midpoint of Road between t_start and (t_start + 1_Settlement)
 		var sc_x = floor(t_start.x / SUPER_CHUNK_SIZE)
 		var sc_z = floor(t_start.y / SUPER_CHUNK_SIZE)
-		
 		var s_east = get_settlement_coords(sc_x + 1, sc_z)
-		
-		# Re-calculate Horizontal Curve for Top Segment to find true midpoint
 		var h_start = Vector3(t_start.x * tile_size + 33.0, 0, t_start.y * tile_size)
 		var h_end = Vector3(s_east.x * tile_size - 33.0, 0, s_east.y * tile_size)
-		var h_mid = (h_start + h_end) * 0.5 # Linear midpoint approx is fine for anchor
+		var h_mid = (h_start + h_end) * 0.5
 		
-		# Determine Start/End
 		start_pos = h_mid
-		end_pos = Vector3(t_end.x * tile_size, 0, t_end.y * tile_size - 33.0) # North Gate of destination
+		end_pos = Vector3(t_end.x * tile_size, 0, t_end.y * tile_size - 33.0)
 		
-		# Control points Vertical
 		var dist = start_pos.distance_to(end_pos)
 		var handle_len = dist * 0.4
 		
-		# Curvature X
 		var seed_x_v = int(t_start.x)
 		var seed_z_v = int(t_start.y)
 		var curv_rng_v = RandomNumberGenerator.new()
@@ -300,27 +308,39 @@ func _dist_to_road_segment(gx, gz, t_start, t_end, is_horizontal):
 		cp1 = start_pos + Vector3(curve_x, 0, handle_len)
 		cp2 = end_pos - Vector3(-curve_x, 0, handle_len)
 	
-	# Sample distance (Approximate)
+	# --- OPTIMIZACIÓN EXTREMA: Bounding Box check ---
+	var min_x = min(min(start_pos.x, end_pos.x), min(cp1.x, cp2.x)) - 30.0
+	var max_x = max(max(start_pos.x, end_pos.x), max(cp1.x, cp2.x)) + 30.0
+	var min_z = min(min(start_pos.z, end_pos.z), min(cp1.z, cp2.z)) - 30.0
+	var max_z = max(max(start_pos.z, end_pos.z), max(cp1.z, cp2.z)) + 30.0
 	
-	# Sample distance (Approximate)
-	# We sample 10 points along curve
+	if gx < min_x or gx > max_x or gz < min_z or gz > max_z:
+		return 9999.0
+	
+	# Sample distance
 	var min_d = 9999.0
-	var pos = Vector3(gx, 0, gz)
-	
-	# Simple adaptive check or fixed steps
-	var steps = 15
-	var prev_p = start_pos
+	var pos = Vector2(gx, gz)
+	var steps = 12 # Reducido de 15 a 12 (Suficiente para curvas suaves)
+	var prev_p = Vector2(start_pos.x, start_pos.z)
 	
 	for i in range(1, steps + 1):
 		var t = float(i) / steps
-		var curr_p = _cubic_bezier(start_pos, cp1, cp2, end_pos, t)
+		var p3 = _cubic_bezier(start_pos, cp1, cp2, end_pos, t)
+		var curr_p = Vector2(p3.x, p3.z)
 		
-		# Dist to segment prev_p -> curr_p
-		var d = _dist_to_segment_2d(pos, prev_p, curr_p)
+		var d = _dist_to_segment_2d_optimized(pos, prev_p, curr_p)
 		if d < min_d: min_d = d
 		prev_p = curr_p
+		if min_d < 2.0: break # Early out si ya estamos en el medio de la carretera
 		
 	return min_d
+
+func _dist_to_segment_2d_optimized(p, a, b):
+	var pa = p - a
+	var ba = b - a
+	var h = clamp(pa.dot(ba) / ba.dot(ba), 0.0, 1.0)
+	return (pa - ba * h).length()
+
 
 func _cubic_bezier(p0, p1, p2, p3, t):
 	var t2 = t * t
@@ -381,6 +401,10 @@ func setup_shared_resources():
 	sign_mat.albedo_color = Color(0.8, 0.7, 0.5)
 	shared_res["sign_mat"] = sign_mat
 
+	# CACHE ANIMAL SCENES
+	shared_res["cow_scene"] = load("res://ui/scenes/Cow.tscn")
+	shared_res["goat_scene"] = load("res://ui/scenes/Goat.tscn")
+
 	create_water_plane()
 
 func find_meshes_recursive(node, results = []):
@@ -412,26 +436,31 @@ func create_water_plane():
 	water_mesh.set_surface_material(0, mat)
 	water_mesh.translation.y = -8.0
 
-func _process(_delta):
+func _process(delta):
 	var p_pos = player.global_transform.origin
-	var current_tile_coords = get_tile_coords(p_pos)
-	if current_tile_coords.distance_to(last_player_tile) > 0.5:
-		last_player_tile = current_tile_coords
-		update_tiles()
 	
-	# SPAWN QUEUE: Spawn 1 LOW LOD tile per frame (Super Fast)
+	# OPTIMIZACIÓN: Solo chequear cambio de tile/LOD cada 0.3 segundos
+	update_timer -= delta
+	if update_timer <= 0:
+		update_timer = 0.3
+		var current_tile_coords = get_tile_coords(p_pos)
+		if current_tile_coords.distance_to(last_player_tile) > 0.5:
+			last_player_tile = current_tile_coords
+			update_tiles()
+		
+		# UPGRADE QUEUE: UPGRADE solo si es necesario y escalonado
+		for coords in active_tiles.keys():
+			var tile = active_tiles[coords]
+			if tile.has_method("upgrade_to_high_lod") and tile.current_lod == tile.TileLOD.LOW:
+				var dist = p_pos.distance_to(tile.global_transform.origin)
+				if dist < 320.0: 
+					tile.upgrade_to_high_lod()
+					break 
+	
+	# SPAWN QUEUE: Sigue siendo 1 por frame para máxima fluidez al entrar en nuevas zonas
 	if spawn_queue.size() > 0:
 		var coords = spawn_queue.pop_front()
 		spawn_tile(int(coords.x), int(coords.y))
-	
-	# UPGRADE QUEUE: Check for LOW LOD tiles close to player and upgrade 1 per frame
-	for key in active_tiles.keys():
-		var tile = active_tiles[key]
-		if tile.has_method("upgrade_to_high_lod") and tile.current_lod == tile.TileLOD.LOW:
-			var dist = p_pos.distance_to(tile.global_transform.origin)
-			if dist < 350.0: # Upgrade slightly before physics is needed
-				tile.upgrade_to_high_lod()
-				break # Only upgrade 1 per frame to avoid stutter
 	
 	var water = get_node_or_null("WaterPlane")
 	if water:
@@ -439,8 +468,8 @@ func _process(_delta):
 		water.translation.z = p_pos.z
 
 func spawn_tile(x, z):
-	var key = str(x) + "," + str(z)
-	if active_tiles.has(key): return
+	var coords = Vector2(x, z)
+	if active_tiles.has(coords): return
 	
 	var tile = null
 	# Intentar reciclar del pool
@@ -459,7 +488,7 @@ func spawn_tile(x, z):
 	# Enum: LOD.LOW = 1
 	if tile.has_method("setup_biome"):
 		tile.setup_biome(0, shared_res, 0, is_spawn, 1) # 1 = LOD.LOW
-	active_tiles[key] = tile
+	active_tiles[coords] = tile
 
 func get_tile_coords(pos):
 	# POSICIÓN GLOBAL: Usamos global_transform para ignorar el parentesco

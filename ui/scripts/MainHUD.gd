@@ -25,8 +25,8 @@ var right_touch_index = -1
 # Tween reutilizable (OPTIMIZACIÓN: evita crear/destruir nodos constantemente)
 var button_tween : Tween
 
-# Panel de configuración
-onready var settings_panel = get_node_or_null("../SettingsPanel")
+# Panel de configuración (Se buscará dinámicamente si es nulo)
+var settings_panel : Control
 
 # Botones con estilos premium (Flotantes)
 onready var buttons = {
@@ -66,18 +66,24 @@ func _ready():
 	$Header.mouse_filter = MOUSE_FILTER_IGNORE
 	$Sidebar.mouse_filter = MOUSE_FILTER_IGNORE  # CRÍTICO: Permitir que los toques lleguen a los botones hijos
 	
-	# Conectar eventos de botones de acción
+	# Conectar eventos de botones de acción (REVERTIDO A GUI_INPUT para compatibilidad total)
 	for btn_name in buttons:
 		var btn = buttons[btn_name]
-		# FIX: Asegurar que el botón capture input (0 = STOP)
-		btn.mouse_filter = 0 
+		if not btn: continue
+		btn.mouse_filter = Control.MOUSE_FILTER_STOP
+		btn.focus_mode = Control.FOCUS_NONE 
 		btn.connect("gui_input", self, "_on_button_input", [btn_name])
 	
-	# Conectar eventos de botones de la barra lateral
+	# Conectar eventos de botones de la barra lateral (GUI_INPUT)
 	for btn_name in sidebar_buttons:
 		var btn = sidebar_buttons[btn_name]
-		btn.mouse_filter = 0
+		if not btn: continue
+		btn.mouse_filter = Control.MOUSE_FILTER_STOP
+		btn.focus_mode = Control.FOCUS_NONE
 		btn.connect("gui_input", self, "_on_sidebar_button_input", [btn_name])
+	
+	# Buscar panel de configuración si existe en la raíz
+	settings_panel = get_tree().root.find_node("SettingsPanel", true, false)
 	
 	# Forzar escalado de moneda
 	$Header/Currency/Diamonds/H/Icon.rect_min_size = Vector2(36, 36)
@@ -147,6 +153,9 @@ func _input(event):
 	
 	if is_touch_event:
 		if event.pressed:
+			# EXCLUSIÓN: Si el toque cayó sobre un botón de la UI, el joystick NO debe capturarlo.
+			# Godot suele manejar esto, pero con toques múltiples a veces se cruzan.
+			
 			# Solo capturar si está DENTRO de un joystick
 			if left_touch_index == -1 and $MoveJoystickContainer/JoystickWell.get_global_rect().has_point(touch_pos):
 				left_touch_index = index
@@ -158,11 +167,13 @@ func _input(event):
 			# Release
 			if index == left_touch_index:
 				left_touch_index = -1
-				reset_joy(left_joy, left_center, "joystick_moved")
+				reset_joy(left_joy, left_center)
+				emit_signal("joystick_moved", Vector2.ZERO)
 				get_tree().set_input_as_handled()
 			elif index == right_touch_index:
 				right_touch_index = -1
-				reset_joy(right_joy, right_center, "camera_moved")
+				reset_joy(right_joy, right_center)
+				emit_signal("camera_moved", Vector2.ZERO)
 				get_tree().set_input_as_handled()
 
 	if event is InputEventScreenDrag or (event is InputEventMouseMotion and (left_touch_index != -1 or right_touch_index != -1)):
@@ -170,84 +181,98 @@ func _input(event):
 		var move_index = event.index if (event is InputEventScreenDrag or event is InputEventScreenTouch) else 0
 		
 		if move_index == left_touch_index:
-			update_joystick(move_pos, left_joy, left_center, "joystick_moved")
+			var vec = update_joystick(move_pos, left_joy, left_center)
+			emit_signal("joystick_moved", vec)
 			get_tree().set_input_as_handled()
 		elif move_index == right_touch_index:
-			update_joystick(move_pos, right_joy, right_center, "camera_moved")
+			var vec = update_joystick(move_pos, right_joy, right_center)
+			emit_signal("camera_moved", vec)
 			get_tree().set_input_as_handled()
 
-func update_joystick(touch_pos, joy_node, center_local, signal_name):
+func update_joystick(touch_pos, joy_node, center_local):
 	var parent_rect = joy_node.get_parent().get_global_rect()
 	var vector = (touch_pos - (parent_rect.position + center_local))
 	if vector.length() > joy_radius:
 		vector = vector.normalized() * joy_radius
 	
 	joy_node.rect_position = center_local + vector - joy_node.rect_size / 2
-	emit_signal(signal_name, vector / joy_radius)
+	return vector / joy_radius
 
-func reset_joy(joy_node, center_local, signal_name):
+func reset_joy(joy_node, center_local):
 	joy_node.rect_position = center_local - joy_node.rect_size / 2
-	emit_signal(signal_name, Vector2.ZERO)
 
 var last_press_time = 0
 
 func _on_button_input(event, btn_name):
 	var btn = buttons[btn_name]
+	if not btn: return
+	
 	if event is InputEventScreenTouch or event is InputEventMouseButton:
 		if event.pressed:
-			# DEBOUNCE: Evitar doble input (Touch + Mouse Emulado)
+			# DEBOUNCE: Solo para el inicio de la pulsación
 			var now = OS.get_ticks_msec()
-			if now - last_press_time < 150:
-				return
+			if now - last_press_time < 150: return 
 			last_press_time = now
 			
 			animate_button_press(btn)
+			
+			# Acciones Instantáneas (se ejecutan al pulsar)
 			if btn_name == "zoom":
 				emit_signal("zoom_pressed")
 			elif btn_name == "map":
-				# Abrir panel de MAPA
 				var map_panel = get_node_or_null("MapPanel")
-				if map_panel:
-					map_panel.visible = !map_panel.visible
+				if map_panel: map_panel.visible = !map_panel.visible
 			elif btn_name == "mount":
 				emit_signal("mount_pressed")
-			elif btn_name == "run":
-				emit_signal("run_pressed", true)
 			elif btn_name == "jump":
 				emit_signal("jump_pressed")
+			elif btn_name == "run":
+				emit_signal("run_pressed", true)
+			elif btn_name == "attack":
+				pass # Futuro: emit_signal("attack_pressed", true)
 		else:
+			# RELEASE: El release siempre se procesa para evitar botones "pegados"
 			animate_button_release(btn)
 			if btn_name == "run":
 				emit_signal("run_pressed", false)
 
+func _on_sidebar_button_input(event, btn_name):
+	if event is InputEventScreenTouch or event is InputEventMouseButton:
+		if event.pressed:
+			# DEBOUNCE: Evitar el "doble toggle" en móvil (Touch + Mouse emulado)
+			var now = OS.get_ticks_msec()
+			if now - last_press_time < 150: return
+			last_press_time = now
+			
+			var btn = sidebar_buttons[btn_name]
+			if btn: animate_button_press(btn)
+			
+			# Lógica de paneles
+			if btn_name == "map_sidebar":
+				var map_panel = get_node_or_null("MapPanel")
+				if map_panel: map_panel.visible = !map_panel.visible
+			elif btn_name == "settings":
+				if not settings_panel:
+					settings_panel = get_tree().root.find_node("SettingsPanel", true, false)
+				if settings_panel:
+					settings_panel.visible = !settings_panel.visible
+					settings_panel.raise()
+		else:
+			# Release animación
+			var btn = sidebar_buttons[btn_name]
+			if btn: animate_button_release(btn)
+
 func animate_button_press(node):
-	# Usar el Tween reutilizable (OPTIMIZACIÓN)
+	if not button_tween: return
 	button_tween.stop_all()
 	button_tween.interpolate_property(node, "rect_scale", node.rect_scale, Vector2(0.92, 0.92), 0.05, Tween.TRANS_LINEAR, Tween.EASE_IN_OUT)
 	button_tween.start()
 
 func animate_button_release(node):
-	# Usar el Tween reutilizable (OPTIMIZACIÓN)
+	if not button_tween: return
 	button_tween.stop_all()
 	button_tween.interpolate_property(node, "rect_scale", node.rect_scale, Vector2(1.0, 1.0), 0.1, Tween.TRANS_LINEAR, Tween.EASE_IN_OUT)
 	button_tween.start()
-
-func _on_sidebar_button_input(event, btn_name):
-	if event is InputEventScreenTouch or event is InputEventMouseButton:
-		if event.pressed:
-			print("Botón sidebar presionado:", btn_name)
-			if btn_name == "map_sidebar":
-				# Abrir panel de MAPA
-				var map_panel = get_node_or_null("MapPanel")
-				if map_panel:
-					map_panel.visible = !map_panel.visible
-			elif btn_name == "settings":
-				# Abrir panel de configuración
-				if settings_panel:
-					settings_panel.visible = !settings_panel.visible
-					print("Panel de configuración:", "VISIBLE" if settings_panel.visible else "OCULTO")
-				else:
-					print("ERROR: settings_panel no encontrado")
 
 func set_health(val_percent):
 	$Header/StatusBars/HealthBarCont/HealthBar.material.set_shader_param("value", val_percent)

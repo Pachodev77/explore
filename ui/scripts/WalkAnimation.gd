@@ -16,6 +16,18 @@ var bones = {
 	"UpperArmL": -1, "LowerArmL": -1,
 	"UpperArmR": -1, "LowerArmR": -1
 }
+var idle_phase = 0.0
+var idle_weight = 0.0
+var run_weight = 0.0
+
+# --- PARÁMETROS DE SUAVIZADO (FLUIDEZ) ---
+var curr_crouch = 0.0
+var curr_arm_raise = 0.0
+var curr_arm_split = 0.0
+var curr_leg_fold = 0.0
+var curr_leg_split = 0.0
+var curr_torso_tilt = 0.0
+var animation_smoothing = 15.0
 
 export var speed_multiplier = 4.5
 export var step_lift = 0.3
@@ -75,6 +87,26 @@ func _process(delta):
 	else:
 		phase = lerp(phase, 0.0, 5.0 * delta)
 	
+	# Actualizar fase de reposo (Idle) y peso de blending
+	var is_moving = (is_walking and walk_speed > 0.1) or is_riding or current_jump_state != JumpState.IDLE
+	idle_weight = lerp(idle_weight, 0.0 if is_moving else 1.0, 4.0 * delta)
+	
+	# Calcular peso de carrera (0 = Caminar lento, 1 = Sprint)
+	var target_run = clamp((walk_speed - 1.0) / 0.8, 0.0, 1.0)
+	run_weight = lerp(run_weight, target_run if is_walking else 0.0, 5.0 * delta)
+	
+	idle_phase += delta * 1.5 
+	if idle_phase > TAU: idle_phase -= TAU
+	
+	# --- ACTUALIZAR SUAVIZADO DE PARÁMETROS ---
+	var targets = _get_jump_targets()
+	curr_crouch = lerp(curr_crouch, targets.crouch, delta * animation_smoothing)
+	curr_arm_raise = lerp(curr_arm_raise, targets.arm_raise, delta * animation_smoothing)
+	curr_arm_split = lerp(curr_arm_split, targets.arm_split, delta * animation_smoothing)
+	curr_leg_fold = lerp(curr_leg_fold, targets.leg_fold, delta * animation_smoothing)
+	curr_leg_split = lerp(curr_leg_split, targets.leg_split, delta * animation_smoothing)
+	curr_torso_tilt = lerp(curr_torso_tilt, targets.torso_tilt, delta * animation_smoothing)
+	
 	_animate()
 
 func set_walking(walking, s):
@@ -89,6 +121,7 @@ enum JumpState { IDLE, ANTICIPATION, IN_AIR, IMPACT }
 var current_jump_state = JumpState.IDLE
 var jump_timer = 0.0
 var vertical_velocity = 0.0
+var horizontal_velocity = Vector3.ZERO
 var is_on_floor = true
 
 func set_riding(riding, horse = null):
@@ -101,8 +134,9 @@ func set_jumping(jumping):
 		current_jump_state = JumpState.ANTICIPATION
 		jump_timer = 0.0
 
-func update_physics_state(v_vel, grounded):
+func update_physics_state(v_vel, full_velocity, grounded):
 	vertical_velocity = v_vel
+	horizontal_velocity = Vector3(full_velocity.x, 0, full_velocity.z)
 	
 	# Detectar aterrizaje para entrar en IMPACT (más robusto)
 	if grounded and current_jump_state == JumpState.IN_AIR:
@@ -123,7 +157,6 @@ func _animate():
 		_animate_jump_pro()
 		return
 	
-	var bounce = -abs(sin(phase)) * bounce_amp
 	var sway = sin(phase) * 0.03
 	
 	if is_riding:
@@ -132,19 +165,91 @@ func _animate():
 	
 	# Hips (Caminando)
 	var h_p = Transform.IDENTITY
+	var dynamic_bounce = bounce_amp * lerp(1.0, 2.2, run_weight)
+	var bounce = -abs(sin(phase)) * dynamic_bounce
 	h_p.origin.y = bounce
 	h_p.basis = h_p.basis.rotated(Vector3.FORWARD, sway)
 	skel.set_bone_pose(bones["Hips"], h_p)
 	
-	# Torso
+	# Torso (Lean forward when running)
 	if bones["Spine2"] != -1:
 		var s_p = Transform.IDENTITY
+		var lean = deg2rad(lerp(0.0, 25.0, run_weight))
+		s_p.basis = s_p.basis.rotated(Vector3.RIGHT, lean)
 		s_p.basis = s_p.basis.rotated(Vector3.FORWARD, -sway * 0.8)
 		skel.set_bone_pose(bones["Spine2"], s_p)
 	
 	_animate_limbs(phase)
+	
+	# --- APLICAR IDLE (BREATHING/SWAY) ---
+	if idle_weight > 0.01:
+		_apply_idle_pose()
+
+func _apply_idle_pose():
+	# 1. Respiración (Hips & Spine)
+	var breath = sin(idle_phase) * 0.015 # Bob vertical sutil
+	var breath_rot = sin(idle_phase + 0.5) * deg2rad(2.0) # Rotación de pecho
+	
+	# Mezclar con la posición actual (Hips)
+	var h_p = skel.get_bone_pose(bones["Hips"])
+	h_p.origin.y += breath * idle_weight
+	skel.set_bone_pose(bones["Hips"], h_p)
+	
+	# Mezclar con la posición actual (Spine2)
+	if bones["Spine2"] != -1:
+		var s_p = skel.get_bone_pose(bones["Spine2"])
+		s_p.basis = s_p.basis.rotated(Vector3.RIGHT, breath_rot * idle_weight)
+		skel.set_bone_pose(bones["Spine2"], s_p)
+		
+	# 2. Brazos relajados (Slight outward sway)
+	for side in ["L", "R"]:
+		var u_arm = bones["UpperArm" + side]
+		var l_arm = bones["LowerArm" + side]
+		if u_arm != -1:
+			var side_m = 1.0 if side == "L" else -1.0
+			var ua_p = skel.get_bone_pose(u_arm)
+			# Rotar ligeramente hacia afuera y abajo (antes estaba en -5.0)
+			ua_p.basis = ua_p.basis.rotated(Vector3.UP, deg2rad(10.0 * side_m) * idle_weight)
+			ua_p.basis = ua_p.basis.rotated(Vector3.RIGHT, deg2rad(15.0) * idle_weight)
+			skel.set_bone_pose(u_arm, ua_p)
+		if l_arm != -1:
+			var la_p = skel.get_bone_pose(l_arm)
+			la_p.basis = la_p.basis.rotated(Vector3.RIGHT, deg2rad(-15.0) * idle_weight)
+			skel.set_bone_pose(l_arm, la_p)
+	
+	# 3. Piernas estables y separadas (BIEN PARACO)
+	for side in ["L", "R"]:
+		var u_leg = bones["UpperLeg" + side]
+		var l_leg = bones["LowerLeg" + side]
+		var f_leg = bones["Foot" + side]
+		var side_m = 1.0 if side == "L" else -1.0
+		
+		if u_leg != -1:
+			var ul_p = skel.get_bone_pose(u_leg)
+			# Slerp hacia posición neutra + separación lateral (reducido de 8 a 4 grados)
+			var target_basis = Basis().rotated(Vector3.FORWARD, deg2rad(4.0 * side_m))
+			ul_p.basis = ul_p.basis.slerp(target_basis, idle_weight)
+			skel.set_bone_pose(u_leg, ul_p)
+			
+		if l_leg != -1:
+			var ll_p = skel.get_bone_pose(l_leg)
+			# Forzar estiramiento de rodilla (Identidad)
+			ll_p.basis = ll_p.basis.slerp(Basis(), idle_weight)
+			skel.set_bone_pose(l_leg, ll_p)
+			
+		if f_leg != -1:
+			var fl_p = skel.get_bone_pose(f_leg)
+			# Compensar rotación de cadera (reducido de -8 a -4 grados)
+			var target_basis = Basis().rotated(Vector3.FORWARD, deg2rad(-4.0 * side_m))
+			fl_p.basis = fl_p.basis.slerp(target_basis, idle_weight)
+			skel.set_bone_pose(f_leg, fl_p)
 
 func _animate_limbs(p):
+	# Ajustes dinámicos por velocidad
+	var dyn_swing = deg2rad(swing_angle * lerp(1.0, 1.4, run_weight))
+	var dyn_knee = deg2rad(lerp(40.0, 95.0, run_weight))
+	var dyn_arm_swing = deg2rad(swing_angle * lerp(0.7, 1.5, run_weight))
+	
 	for side in ["L", "R"]:
 		var p_side = p if side == "L" else p + PI
 		
@@ -153,106 +258,164 @@ func _animate_limbs(p):
 		var l_leg = bones["LowerLeg" + side]
 		var f_leg = bones["Foot" + side]
 		if u_leg != -1 and l_leg != -1:
-			var swing = sin(p_side) * deg2rad(swing_angle)
-			var knee_bend = max(0, -cos(p_side)) * deg2rad(40)
+			var swing = sin(p_side) * dyn_swing
+			# Al correr, el swing hacia atrás es un poco menor que hacia adelante para realismo
+			if swing < 0: swing *= 0.8
+			
+			var knee_bend = max(0, -cos(p_side)) * dyn_knee
 			
 			skel.set_bone_pose(u_leg, Transform(Basis().rotated(Vector3.RIGHT, swing), Vector3.ZERO))
 			skel.set_bone_pose(l_leg, Transform(Basis().rotated(Vector3.RIGHT, knee_bend), Vector3.ZERO))
 			
 			if f_leg != -1:
-				skel.set_bone_pose(f_leg, Transform(Basis().rotated(Vector3.RIGHT, -(swing + knee_bend)), Vector3.ZERO))
+				# Punta del pie hacia abajo al correr para empuje
+				var f_rot = -(swing + knee_bend) + (lerp(0.0, 0.4, run_weight) if cos(p_side) > 0 else 0.0)
+				skel.set_bone_pose(f_leg, Transform(Basis().rotated(Vector3.RIGHT, f_rot), Vector3.ZERO))
 		
 		# --- BRAZOS ---
 		var u_arm = bones["UpperArm" + side]
 		var l_arm = bones["LowerArm" + side]
 		if u_arm != -1 and l_arm != -1:
 			var p_arm = p_side + PI
-			var a_swing = sin(p_arm) * deg2rad(swing_angle * 0.7)
-			var elbow_bend = (cos(p_arm) * 0.5 + 0.5) * deg2rad(-25)
+			var a_swing = sin(p_arm) * dyn_arm_swing
 			
-			skel.set_bone_pose(u_arm, Transform(Basis().rotated(Vector3.RIGHT, a_swing), Vector3.ZERO))
-			skel.set_bone_pose(l_arm, Transform(Basis().rotated(Vector3.RIGHT, elbow_bend), Vector3.ZERO))
+			# Brazo se dobla más al correr (Pump)
+			var elbow_base = lerp(-25.0, -75.0, run_weight)
+			var elbow_swing = (cos(p_arm) * 0.5 + 0.5) * deg2rad(elbow_base)
+			
+			# Hombros rotan hacia adentro un poco al sprintar
+			var arm_rot = Basis().rotated(Vector3.RIGHT, a_swing)
+			var inward = deg2rad(lerp(5.0, 15.0, run_weight) * (1.0 if side == "L" else -1.0))
+			arm_rot = arm_rot.rotated(Vector3.UP, inward)
+			
+			skel.set_bone_pose(u_arm, Transform(arm_rot, Vector3.ZERO))
+			skel.set_bone_pose(l_arm, Transform(Basis().rotated(Vector3.RIGHT, elbow_swing), Vector3.ZERO))
 
 func _animate_jump_pro():
-	# Parámetros visuales según estado
-	var crouch = 0.0
-	var arm_raise = 0.0
-	var leg_fold = 0.0
-	var torso_tilt = 0.0
-	
-	match current_jump_state:
-		JumpState.ANTICIPATION:
-			var t = clamp(jump_timer / 0.15, 0.0, 1.0)
-			crouch = -0.25 * sin(t * PI * 0.5)
-			arm_raise = t * 20.0
-			torso_tilt = t * 10.0
-			
-		JumpState.IN_AIR:
-			# Reacciona a la velocidad vertical
-			# vertical_velocity > 0: Subiendo (Estiramiento)
-			# vertical_velocity < 0: Bajando (Encogimiento)
-			var v = clamp(vertical_velocity / 12.0, -1.0, 1.0)
-			
-			if v > 0: # Subiendo
-				crouch = 0.0
-				arm_raise = lerp(20.0, 70.0, v)
-				leg_fold = lerp(0.0, 30.0, v)
-				torso_tilt = -5.0
-			else: # Bajando
-				crouch = 0.0
-				arm_raise = lerp(70.0, 45.0, abs(v))
-				leg_fold = lerp(30.0, 60.0, abs(v))
-				torso_tilt = 10.0
-				
-		JumpState.IMPACT:
-			var t = clamp(jump_timer / 0.2, 0.0, 1.0)
-			crouch = -0.3 * sin(t * PI) # "Squash" al aterrizar
-			leg_fold = 40.0 * (1.0 - t)
-			arm_raise = 45.0 * (1.0 - t)
-			torso_tilt = 15.0 * (1.0 - t)
-	
-	# Aplicar Poses
+	# Aplicar Poses con inclinación por inercia (Usando variables suavizadas)
 	var h_p = Transform.IDENTITY
-	h_p.origin.y = crouch
+	h_p.origin.y = curr_crouch
+	
+	# Inclinación lateral y frontal basada en velocidad horizontal
+	var jump_lean = clamp(horizontal_velocity.length() / 8.0, 0, 1)
+	
 	skel.set_bone_pose(bones["Hips"], h_p)
 	
 	if bones["Spine2"] != -1:
-		skel.set_bone_pose(bones["Spine2"], Transform(Basis().rotated(Vector3.RIGHT, deg2rad(torso_tilt)), Vector3.ZERO))
+		var total_tilt = curr_torso_tilt + (jump_lean * 15.0) # Inclinar hacia adelante si corre
+		skel.set_bone_pose(bones["Spine2"], Transform(Basis().rotated(Vector3.RIGHT, deg2rad(total_tilt)), Vector3.ZERO))
 		
 	for side in ["L", "R"]:
 		var u_leg = bones["UpperLeg" + side]
 		var l_leg = bones["LowerLeg" + side]
 		var u_arm = bones["UpperArm" + side]
 		
+		# --- PIERNAS ---
 		if u_leg != -1:
-			skel.set_bone_pose(u_leg, Transform(Basis().rotated(Vector3.RIGHT, deg2rad(-leg_fold)), Vector3.ZERO))
+			var split = curr_leg_split if side == "L" else -curr_leg_split
+			skel.set_bone_pose(u_leg, Transform(Basis().rotated(Vector3.RIGHT, deg2rad(-curr_leg_fold + split)), Vector3.ZERO))
 		if l_leg != -1:
-			skel.set_bone_pose(l_leg, Transform(Basis().rotated(Vector3.RIGHT, deg2rad(leg_fold * 1.2)), Vector3.ZERO))
+			# Pierna trasera se flexiona más para realismo
+			var knee_factor = 1.2 if side == "L" else 0.8 
+			skel.set_bone_pose(l_leg, Transform(Basis().rotated(Vector3.RIGHT, deg2rad(curr_leg_fold * knee_factor)), Vector3.ZERO))
+			
+		# --- BRAZOS (CORREGIDO: Split real) ---
 		if u_arm != -1:
-			var side_offset = 10.0 if side == "L" else -10.0
-			var a_rot = Basis().rotated(Vector3.RIGHT, deg2rad(-arm_raise))
-			a_rot = a_rot.rotated(Vector3.UP, deg2rad(side_offset))
+			var side_offset = 15.0 if side == "L" else -15.0
+			
+			# Lógica de Split: El brazo opuesto a la pierna adelantada va hacia adelante.
+			# En nuestro sistema, Pierna L (+) es adelantada.
+			# Entonces Brazo L debe ser (-) para ir atrás (Split negativo).
+			# Brazo R debe ser (+) para ir adelante (Split positivo).
+			var split_multiplier = -1.0 if side == "L" else 1.0
+			var a_split_final = curr_arm_split * split_multiplier
+			
+			# Rotación total del brazo: Upward Reach (-arm_raise) + Split
+			# Si curr_arm_raise es alto, ambos pueden ir adelante. 
+			# Reducimos curr_arm_raise rítmicamente en el split.
+			var actual_raise = curr_arm_raise * (1.0 - abs(a_split_final) / 90.0)
+			
+			# Rotación hacia afuera (ingravidez)
+			var outward = 25.0 if abs(vertical_velocity) <= 2.0 and current_jump_state == JumpState.IN_AIR else 5.0
+			
+			var a_rot = Basis().rotated(Vector3.RIGHT, deg2rad(-actual_raise + a_split_final))
+			a_rot = a_rot.rotated(Vector3.UP, deg2rad(side_offset + (outward if side == "L" else -outward)))
 			skel.set_bone_pose(u_arm, Transform(a_rot, Vector3.ZERO))
+
+func _get_jump_targets():
+	var t = {
+		"crouch": 0.0, "arm_raise": 0.0, "arm_split": 0.0,
+		"leg_fold": 0.0, "leg_split": 0.0, "torso_tilt": 0.0
+	}
+	
+	match current_jump_state:
+		JumpState.ANTICIPATION:
+			var time_f = clamp(jump_timer / 0.15, 0.0, 1.0)
+			t.crouch = -0.3 * sin(time_f * PI * 0.5)
+			t.arm_raise = -30.0 # Brazos atrás en anticipación
+			t.torso_tilt = 15.0
+			
+		JumpState.IN_AIR:
+			if vertical_velocity > 1.0: # Ascenso
+				var v = clamp(vertical_velocity / 12.0, 0, 1)
+				t.arm_raise = lerp(20.0, 90.0, v)
+				t.arm_split = 40.0 # Split activo
+				t.leg_fold = 20.0
+				t.leg_split = 30.0
+				t.torso_tilt = -10.0
+			elif abs(vertical_velocity) <= 1.0: # Ápice
+				t.arm_raise = 45.0
+				t.arm_split = 50.0 # Máximo split
+				t.leg_fold = 45.0
+				t.leg_split = 40.0
+				t.torso_tilt = 5.0
+			else: # Descenso
+				var v = clamp(abs(vertical_velocity) / 15.0, 0, 1)
+				t.arm_raise = lerp(45.0, 0.0, v)
+				t.arm_split = lerp(50.0, 10.0, v)
+				t.leg_fold = lerp(45.0, -10.0, v) # Piernas estiradas para tocar suelo
+				t.leg_split = lerp(40.0, 5.0, v)
+				t.torso_tilt = 15.0
+				
+		JumpState.IMPACT:
+			var time_f = clamp(jump_timer / 0.3, 0.0, 1.0)
+			var s = sin(time_f * PI)
+			t.crouch = -0.4 * s
+			t.leg_fold = 50.0 * s
+			t.arm_raise = 40.0 * s
+			t.torso_tilt = 20.0 * s
+			
+	return t
 
 func _animate_riding(p):
 	# Obtener datos del caballo
 	var h_bounce = 0.0
 	var h_pitch = 0.0
 	if current_horse:
-		h_bounce = current_horse.anim_bounce
-		h_pitch = current_horse.anim_pitch
+		# Sumar rebote de galope + agachado de salto
+		var total_bounce = current_horse.anim_bounce
+		if "curr_h_crouch" in current_horse:
+			total_bounce += current_horse.curr_h_crouch
+		
+		# Sumar pitch de galope + inclinación de salto
+		var total_pitch = current_horse.anim_pitch
+		if "curr_h_pitch" in current_horse:
+			total_pitch += deg2rad(current_horse.curr_h_pitch)
+			
+		h_bounce = total_bounce
+		h_pitch = total_pitch
 	
-	# HIPS (Reaccionan al rebote)
+	# HIPS (Reaccionan al rebote del caballo)
 	var h_p = Transform.IDENTITY
-	# El jinete rebota un poco mas (inercia) pero siguiendo al caballo
-	h_p.origin.y = h_bounce * 0.8 + 0.1 
-	# Inclinación opuesta al caballo (para mantener el equilibrio del torso)
-	h_p.basis = h_p.basis.rotated(Vector3.RIGHT, -h_pitch * 0.5)
+	# El jinete sigue al caballo con un poco de suavizado visual (inercia)
+	h_p.origin.y = h_bounce * 0.9 + 0.1 
+	# El jinete se inclina para compensar el cabeceo del caballo
+	h_p.basis = h_p.basis.rotated(Vector3.RIGHT, -h_pitch * 0.4)
 	skel.set_bone_pose(bones["Hips"], h_p)
 	
-	# SPINE (Contrarresta el cabeceo del caballo para que la cabeza del jinete este estable)
+	# SPINE (Mantiene el equilibrio)
 	if bones["Spine2"] != -1:
-		var s_rot = Basis().rotated(Vector3.RIGHT, -h_pitch * 0.7)
+		var s_rot = Basis().rotated(Vector3.RIGHT, -h_pitch * 0.6)
 		skel.set_bone_pose(bones["Spine2"], Transform(s_rot, Vector3.ZERO))
 	
 	# PIERNAS (Sentado estable)

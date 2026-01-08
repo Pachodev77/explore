@@ -72,7 +72,6 @@ func _add_fence(container, shared_res):
 	var posts = []
 	var rails = []
 	
-	var size = TILE_SIZE # 150.0
 	var half = 33.0 # 33.0 * 2 = 66m. (Cercano a 65, divisible por 3)
 	var perimeter_y = 2.0 # Altura base del spawn
 	
@@ -368,6 +367,11 @@ func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn, grid_res = G
 			st.add_uv(Vector2(x / float(grid_res), z / float(grid_res)))
 			st.add_vertex(v)
 			verts.append(v)
+		
+		# Yield every 4 rows to prevent freeze
+		if z % 4 == 0:
+			yield(get_tree(), "idle_frame")
+			if not is_instance_valid(self): return
 			
 	# Triangulación (Índices)
 	for z in range(grid_res):
@@ -386,9 +390,12 @@ func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn, grid_res = G
 	var new_mesh = st.commit()
 	mesh_instance.mesh = new_mesh
 	
-	# LOD-BASED PHYSICS: Only generate for HIGH LOD (close tiles)
-	# LOW LOD tiles don't need physics since they are far away.
+	# LOD-BASED PHYSICS: Solo generar para HIGH LOD (tiles cercanos)
+	# OPTIMIZACIÓN: Esperar un frame ANTES de generar colisión para no congelar el juego
 	if lod_level == TileLOD.HIGH or is_spawn:
+		yield(get_tree(), "idle_frame")
+		if not is_instance_valid(self): return
+		
 		var collision_shape = get_node_or_null("CollisionShape")
 		if not collision_shape:
 			collision_shape = CollisionShape.new()
@@ -439,10 +446,10 @@ func _add_decos_final(deco_container, shared_res, is_spawn):
 			elif deg > 45 and deg <= 135: type = Biome.JUNGLE
 			elif deg > -45 and deg <= 45: type = Biome.DESERT
 			
-			# DENSIDAD POR BIOMA
-			var spawn_chance = 0.35
-			if type == Biome.JUNGLE: spawn_chance = 0.9
-			elif type == Biome.DESERT: spawn_chance = 0.15
+			# DENSIDAS POR BIOMA (Ajustada para rendimiento)
+			var spawn_chance = 0.20 # Antes 0.25
+			if type == Biome.JUNGLE: spawn_chance = 0.6 # Antes 0.7
+			elif type == Biome.DESERT: spawn_chance = 0.10 # Antes 0.12
 			
 			if is_spawn:
 				var dist = max(abs(lx), abs(lz))
@@ -496,6 +503,49 @@ func _add_decos_final(deco_container, shared_res, is_spawn):
 
 	_apply_mmi_final(deco_container, shared_res["tree_parts"], tree_instances)
 	_apply_mmi_final(deco_container, shared_res["cactus_parts"], cactus_instances)
+	
+	# AGREGAR ANIMALES (Escalonado)
+	_add_animals(deco_container, shared_res)
+
+func _add_animals(container, shared_res):
+	seed(int(translation.x) * 73 + int(translation.z) * 31)
+	
+	var b_noise = shared_res["biome_noise"]
+	var noise_val = b_noise.get_noise_2d(translation.x, translation.z)
+	var deg = rad2deg(atan2(translation.z, translation.x)) + (noise_val * 120.0)
+	
+	while deg > 180: deg -= 360
+	while deg <= -180: deg += 360
+	
+	if deg > 135 or deg <= -135: # PRAIRIE
+		if randf() < 0.25: # Chance reducido (antes 0.4)
+			var cow_scene = shared_res["cow_scene"]
+			if cow_scene:
+				var count = randi() % 3 + 2 # Grupos más pequeños
+				for i in range(count):
+					yield(get_tree(), "idle_frame")
+					if not is_instance_valid(self): return
+					var cow = cow_scene.instance()
+					var pos = Vector3(rand_range(-35, 35), 0, rand_range(-35, 35))
+					var gx = translation.x + pos.x
+					var gz = translation.z + pos.z
+					cow.translation = pos + Vector3(0, shared_res["height_noise"].get_noise_2d(gx, gz) * shared_res["H_PRAIRIE"] + 0.5, 0)
+					container.add_child(cow)
+	
+	elif deg > -135 and deg <= -45: # SNOW
+		if randf() < 0.20: # Chance reducido (antes 0.35)
+			var goat_scene = shared_res["goat_scene"]
+			if goat_scene:
+				var count = randi() % 3 + 1
+				for i in range(count):
+					yield(get_tree(), "idle_frame")
+					if not is_instance_valid(self): return
+					var goat = goat_scene.instance()
+					var pos = Vector3(rand_range(-40, 40), 0, rand_range(-40, 40))
+					var gx = translation.x + pos.x
+					var gz = translation.z + pos.z
+					goat.translation = pos + Vector3(0, shared_res["height_noise"].get_noise_2d(gx, gz) * shared_res["H_SNOW"] + 0.5, 0)
+					container.add_child(goat)
 
 func _apply_mmi_final(container, parts, instances):
 	if instances.size() == 0: return
@@ -509,4 +559,6 @@ func _apply_mmi_final(container, parts, instances):
 			mm.set_instance_transform(i, instances[i])
 		mmi.multimesh = mm
 		if part.mat: mmi.material_override = part.mat
+		# OPTIMIZACIÓN: Quitar sombras de decoraciones lejanas para liberar GPU
+		mmi.cast_shadow = GeometryInstance.SHADOW_CASTING_SETTING_OFF
 		container.add_child(mmi)

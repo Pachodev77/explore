@@ -3,8 +3,8 @@ extends Spatial
 # OPTIMIZACIÓN EXTREMA: Ciclo día/noche ultra-eficiente
 # Actualiza solo cuando es necesario, sin operaciones costosas
 
-export var cycle_duration_minutes : float = 1.0
-export var start_time : float = 0.22
+export var cycle_duration_minutes : float = 5.0
+export var start_time : float = 1.5
 
 # Referencias cacheadas
 onready var sun = get_parent().get_node("DirectionalLight")

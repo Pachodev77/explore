@@ -8,8 +8,14 @@ export var color = Color(0.45, 0.3, 0.15)
 export var hair_color = Color(0.15, 0.1, 0.05)
 
 var parts = {} # Diccionario de nodos para animación
+var master_material: SpatialMaterial
 
 func _ready():
+	master_material = SpatialMaterial.new()
+	master_material.albedo_color = color
+	master_material.roughness = 0.8 # Un poco más mate para suavizar brillos
+	master_material.metallic = 0.0
+	master_material.params_diffuse_mode = SpatialMaterial.DIFFUSE_BURLEY # Mejor respuesta a la luz
 	_generate_structure()
 
 func _generate_structure():
@@ -17,8 +23,6 @@ func _generate_structure():
 	parts.clear()
 	
 	# --- ANATOMÍA ---
-	var ground_y = 0.0
-	var withers_y = hu * 2.8 # ~1.82m
 	var leg_height = hu * 2.2 # ~1.43m
 	var body_z_start = -hu * 1.5 
 	var body_z_end = hu * 1.0
@@ -31,25 +35,30 @@ func _generate_structure():
 	parts["body"] = body_root
 
 	# Sub-partes del cuerpo (visuales fijas al root)
-	var rib_pos = Vector3(0, 0, body_z_start + hu*0.6)
-	_create_part_mesh(body_root, "Ribcage", rib_pos, Vector3(hu*0.7, hu*0.8, hu*1.0), "ellipsoid")
+	# Ribcage: Ligeramente más pequeño (hu*0.71, hu*0.81)
+	var rib_pos = Vector3(0, hu*0.05, body_z_start + hu*0.5)
+	_create_part_mesh(body_root, "Ribcage", rib_pos, Vector3(hu*0.71, hu*0.81, hu*1.05), "ellipsoid")
 	
-	var rear_pos = Vector3(0, -hu*0.05, body_z_end - hu*0.4)
-	var hind = _create_part_mesh(body_root, "Hindquarters", rear_pos, Vector3(hu*0.75, hu*0.75, hu*0.8), "ellipsoid")
+	# Hindquarters: Ligeramente más pequeño (hu*0.77)
+	var rear_pos = Vector3(0, 0, body_z_end - hu*0.6)
+	var hind = _create_part_mesh(body_root, "Hindquarters", rear_pos, Vector3(hu*0.77, hu*0.77, hu*1.0), "ellipsoid")
 	parts["hindquarters"] = hind
 
-	var mid_pos = (rib_pos + rear_pos) * 0.5
-	_create_part_mesh(body_root, "Belly", mid_pos, Vector3(hu*0.65, hu*0.75, hu*0.7), "ellipsoid")
+	# Belly: Ligeramente más pequeño (hu*0.68, hu*0.76)
+	var mid_pos = (rib_pos + rear_pos) * 0.5 + Vector3(0, -hu*0.05, 0)
+	_create_part_mesh(body_root, "Belly", mid_pos, Vector3(hu*0.68, hu*0.76, hu*0.9), "ellipsoid")
 
 	# 2. CUELLO Y CABEZA
 	var neck_base_node = Spatial.new()
 	neck_base_node.name = "NeckBase"
-	neck_base_node.translation = rib_pos + Vector3(0, hu*0.4, -hu*0.8)
+	# Hundir más el cuello en el pecho (hu*0.7 en vez de 0.8)
+	neck_base_node.translation = rib_pos + Vector3(0, hu*0.3, -hu*0.7)
 	body_root.add_child(neck_base_node)
 	parts["neck_base"] = neck_base_node
 	
 	var neck_v = Vector3(0, hu * 0.7, -hu * 0.3)
-	_create_part_mesh(neck_base_node, "NeckSegment1", neck_v*0.5, Vector3(hu*0.35, neck_v.length()*0.6, hu*0.35), "capsule", neck_v)
+	# Cuello 1: de hu*0.45 (pecho) a hu*0.35 (mitad) - Sobrelape alto (0.8)
+	_create_part_mesh(neck_base_node, "NeckSegment1", neck_v*0.5, Vector3(hu*0.42, hu*0.32, 0), "tapered", neck_v, 0.8)
 
 	var neck_mid_node = Spatial.new()
 	neck_mid_node.name = "NeckMid"
@@ -58,7 +67,8 @@ func _generate_structure():
 	parts["neck_mid"] = neck_mid_node
 	
 	var head_v = Vector3(0, hu * 0.4, -hu * 0.4)
-	_create_part_mesh(neck_mid_node, "NeckSegment2", head_v*0.5, Vector3(hu*0.25, head_v.length()*0.6, hu*0.25), "capsule", head_v)
+	# Cuello 2: de hu*0.32 (mitad) a hu*0.3 (cabeza) - Sobrelape alto (0.8)
+	_create_part_mesh(neck_mid_node, "NeckSegment2", head_v*0.5, Vector3(hu*0.32, hu*0.3, 0), "tapered", head_v, 0.8)
 
 	var head_node = Spatial.new()
 	head_node.name = "Head"
@@ -67,18 +77,25 @@ func _generate_structure():
 	parts["head"] = head_node
 	
 	var head_dir = Vector3(0, -0.2, -0.6).normalized()
-	_create_part_mesh(head_node, "Skull", head_dir*hu*0.4, Vector3(hu*0.25, hu*0.15, hu*0.4), "tapered", head_dir)
+	
+	# Parte 1: Cráneo/Mejillas (Ganache) - Sobrelape alto (0.8)
+	var upper_head_v = head_dir * hu * 0.4
+	_create_part_mesh(head_node, "UpperHead", upper_head_v*0.5, Vector3(hu*0.3, hu*0.22, 0), "tapered", upper_head_v, 0.8)
+
+	# Parte 2: Hocico (Muzzle) - Sobrelape alto (0.8)
+	var muzzle_v = head_dir * hu * 0.4
+	_create_part_mesh(head_node, "Muzzle", upper_head_v + muzzle_v*0.5, Vector3(hu*0.22, hu*0.14, 0), "tapered", muzzle_v, 0.8)
 
 	# --- ANCLAJE PARA RIENDAS ---
 	var rein_anchor = Position3D.new()
 	rein_anchor.name = "ReinAnchor"
-	# Posición aproximada de la boca/bocado: Adelante y abajo relativo a la cabeza
-	rein_anchor.translation = head_dir * hu * 0.7 + Vector3(0, -hu*0.1, 0)
+	# Posición exacta al final del hocico: UpperHead + Muzzle
+	rein_anchor.translation = upper_head_v + muzzle_v
 	head_node.add_child(rein_anchor)
 
 	# 3. PATAS
 	var leg_x = hu * 0.4
-	var f_leg_z = body_z_start + hu * 0.4
+	var f_leg_z = body_z_start + hu * 0.1
 	var b_leg_z = body_z_end - hu * 0.3
 	
 	var leg_names = ["FL", "FR", "BL", "BR"]
@@ -98,9 +115,11 @@ func _generate_structure():
 		# Segmento Superior
 		var upper_v = Vector3(0, -hu*1.1, 0) 
 		if not is_front: upper_v = Vector3(0, -hu*1.1, hu*0.3)
-		_create_part_mesh(leg_root, "Upper", upper_v*0.5, Vector3(hu*0.2, upper_v.length()*0.55, hu*0.2), "capsule", upper_v)
 		
-		# Articulación Media
+		# Pata superior: Sobrelape bajo (0.55) para evitar protrusion
+		_create_part_mesh(leg_root, "Upper", upper_v*0.5, Vector3(hu*0.28, hu*0.18, 0), "tapered", upper_v, 0.55)
+		
+		# Articulación Media (Nodo pivote, sin geometría propia)
 		var mid_joint = Spatial.new()
 		mid_joint.name = "Joint_" + name
 		mid_joint.translation = upper_v
@@ -110,9 +129,11 @@ func _generate_structure():
 		# Segmento Inferior
 		var lower_v = Vector3(0, -hu*1.1, 0)
 		if not is_front: lower_v = Vector3(0, -hu*1.1, -hu*0.3)
-		_create_part_mesh(mid_joint, "Lower", lower_v*0.5, Vector3(hu*0.12, lower_v.length()*0.55, hu*0.12), "capsule", lower_v)
 		
-		# Casco (Elipsoide centrado en Y=0.08 relativo al final de la pata)
+		# Pata inferior: Sobrelape bajo (0.55) 
+		_create_part_mesh(mid_joint, "Lower", lower_v*0.5, Vector3(hu*0.18, hu*0.12, 0), "tapered", lower_v, 0.55)
+		
+		# Casco (Sigue siendo un elipsoide pero bien encajado)
 		var hoof_pos = lower_v + Vector3(0, hu*0.08, 0)
 		var hoof = _create_part_mesh(mid_joint, "Hoof", hoof_pos, Vector3(hu*0.15, hu*0.1, hu*0.15), "ellipsoid")
 		parts["hoof_" + name.to_lower()] = hoof
@@ -120,19 +141,19 @@ func _generate_structure():
 	# 4. COLA
 	var tail_root = Spatial.new()
 	tail_root.name = "TailRoot"
-	# Mover más atrás (hu*0.8) y un poco más arriba (hu*0.4)
-	tail_root.translation = rear_pos + Vector3(0, hu*0.4, hu*0.8)
+	# Mover a un punto intermedio y aún más abajo (hu*0.15)
+	tail_root.translation = rear_pos + Vector3(0, hu*0.15, hu*0.95)
 	body_root.add_child(tail_root)
 	parts["tail"] = tail_root
 	
-	# Hacerla más visible y orientada hacia AFUERA (Backwards +Z)
-	# Dir: Apuntando 45 grados hacia atrás y abajo
-	var tail_dir = Vector3(0, -hu*1.0, hu*1.5) 
+	# Un poco más corta
+	var tail_dir = Vector3(0, -hu*0.6, hu*0.8) 
 	var tail_center = tail_dir * 0.5
-	_create_part_mesh(tail_root, "TailMesh", tail_center, Vector3(hu*0.15, tail_dir.length()*0.9, hu*0.15), "capsule", tail_dir)
+	# Cola cónica: Sobrelape alto (0.8)
+	_create_part_mesh(tail_root, "TailMesh", tail_center, Vector3(hu*0.15, hu*0.06, 0), "tapered", tail_dir, 0.8)
 
 # --- FUNCION MAESTRA DE CREACIÓN DE PARTES ---
-func _create_part_mesh(parent: Node, p_name: String, pos: Vector3, p_scale: Vector3, type: String, dir: Vector3 = Vector3.ZERO):
+func _create_part_mesh(parent: Node, p_name: String, pos: Vector3, p_scale: Vector3, type: String, dir: Vector3 = Vector3.ZERO, overlap: float = 0.7):
 	var mi = MeshInstance.new()
 	mi.name = p_name
 	parent.add_child(mi)
@@ -140,59 +161,85 @@ func _create_part_mesh(parent: Node, p_name: String, pos: Vector3, p_scale: Vect
 	
 	var st = SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var mat = SpatialMaterial.new()
-	mat.albedo_color = color
-	mat.roughness = 0.7
-	st.set_material(mat)
+	st.set_material(master_material)
 	
 	if type == "ellipsoid":
 		_add_ellipsoid(st, Vector3.ZERO, p_scale)
-	elif type == "capsule":
-		# La escala p_scale ya trae el radio en X/Z y el largo en Y (aprox)
-		# Orientamos hacia 'dir'
-		var d = dir.normalized()
-		_add_capsule_oriented(st, -dir*0.5, dir*0.5, p_scale.x)
 	elif type == "tapered":
-		_add_tapered_cylinder_oriented(st, -dir*hu*0.4, dir*hu*0.4, p_scale.x, p_scale.y)
+		# Usamos el parámetro de sobrelape específico para esta pieza
+		_add_tapered_cylinder_oriented(st, -dir*overlap, dir*overlap, p_scale.x, p_scale.y)
+	elif type == "capsule":
+		_add_tapered_cylinder_oriented(st, -dir*overlap, dir*overlap, p_scale.x, p_scale.x)
 
-	st.generate_normals()
+	# st.generate_normals() # YA NO ES NECESARIO, LAS CALCULAMOS A MANO PARA FUSIONAR
 	mi.mesh = st.commit()
 	return mi
 
+func _get_stable_basis(up_dir: Vector3):
+	var up = up_dir.normalized()
+	# Usar una referencia más estable para evitar giros bruscos en el eje vertical
+	var ref = Vector3.UP if abs(up.dot(Vector3.UP)) < 0.9 else Vector3.FORWARD
+	var right = up.cross(ref).normalized()
+	var forward = right.cross(up).normalized()
+	return [right, up, forward]
+
 # --- HELPERS MEJORADOS (LOCALES) ---
 
-func _add_ellipsoid(st, center, scale):
-	var steps = 16 # Aumentado para mayor suavidad (de 12)
+func _add_ellipsoid(st, center, scale, dir = Vector3.UP):
+	var basis = _get_stable_basis(dir)
+	var right = basis[0]; var up = basis[1]; var forward = basis[2]
+	
+	var steps = 16 
 	for i in range(steps):
 		var lat = PI * i / steps
+		var lat_n = PI * (i + 1) / steps
 		for j in range(steps * 2):
 			var lon = 2 * PI * j / (steps * 2)
-			var p1 = center + _spherical(lat, lon) * scale
-			var p2 = center + _spherical(lat + PI/steps, lon) * scale
-			var p3 = center + _spherical(lat, lon + PI/steps) * scale
-			var p4 = center + _spherical(lat + PI/steps, lon + PI/steps) * scale
-			st.add_vertex(p1); st.add_vertex(p2); st.add_vertex(p3)
-			st.add_vertex(p2); st.add_vertex(p4); st.add_vertex(p3)
+			var lon_n = 2 * PI * (j + 1) / (steps * 2)
+			
+			var p1_raw = _spherical_oriented(lat, lon, right, up, forward)
+			var p2_raw = _spherical_oriented(lat_n, lon, right, up, forward)
+			var p3_raw = _spherical_oriented(lat, lon_n, right, up, forward)
+			var p4_raw = _spherical_oriented(lat_n, lon_n, right, up, forward)
+			
+			var p1 = center + p1_raw * scale
+			var p2 = center + p2_raw * scale
+			var p3 = center + p3_raw * scale
+			var p4 = center + p4_raw * scale
+			
+			# Normales: Para un elipsoide, la normal NO es solo la posición.
+			# Es proporcional a (x/a^2, y/b^2, z/c^2). O equivalentemente:
+			# p_raw / scale (normalizado).
+			var n1 = (p1_raw / scale).normalized()
+			var n2 = (p2_raw / scale).normalized()
+			var n3 = (p3_raw / scale).normalized()
+			var n4 = (p4_raw / scale).normalized()
+			
+			# FIX: Evitar triángulos degenerados en los polos
+			if p1.distance_squared_to(p3) > 0.00001:
+				st.add_normal(n1); st.add_vertex(p1)
+				st.add_normal(n2); st.add_vertex(p2)
+				st.add_normal(n3); st.add_vertex(p3)
+			if p2.distance_squared_to(p4) > 0.00001:
+				st.add_normal(n2); st.add_vertex(p2)
+				st.add_normal(n4); st.add_vertex(p4)
+				st.add_normal(n3); st.add_vertex(p3)
 
-func _spherical(lat, lon):
-	return Vector3(sin(lat) * cos(lon), cos(lat), sin(lat) * sin(lon))
-
-func _add_capsule_oriented(st, p1, p2, r):
-	# Aumentar radio de uniones 5% para ocultar costuras
-	var r_joint = r * 1.05
-	_add_ellipsoid(st, p1, Vector3(r_joint, r_joint, r_joint))
-	_add_ellipsoid(st, p2, Vector3(r_joint, r_joint, r_joint))
-	
-	# Usar cilindro en vez de caja para que sea redondo
-	_add_cylinder_between(st, p1, p2, r)
+func _spherical_oriented(lat, lon, right, up, forward):
+	# Coordenadas esféricas estándar
+	var x = sin(lat) * cos(lon)
+	var y = cos(lat)
+	var z = sin(lat) * sin(lon)
+	# Transformar a la base orientada
+	return right * x + up * y + forward * z
 
 func _add_cylinder_between(st, p1, p2, r):
 	var dir = (p2 - p1).normalized()
-	# Crear base ortonormal
-	var up = dir
-	var right = up.cross(Vector3.UP).normalized()
-	if right.length() < 0.01: right = Vector3.RIGHT
-	var forward = right.cross(up).normalized()
+	var basis = _get_stable_basis(dir)
+	var right = basis[0]; var up = basis[1]; var forward = basis[2]
+	
+	# IMPORTANTE: Invertimos el orden para que los vértices coincidan con la orientación de la esfera
+	# La esfera genera lon de 0 a 2PI. El cilindro debe usar el mismo 'lon' para sus anillos.
 	
 	var steps = 16 # Coincidir con la resolución del elipsoide
 	for i in range(steps * 2):
@@ -208,8 +255,19 @@ func _add_cylinder_between(st, p1, p2, r):
 		var v3 = p2 + offset
 		var v4 = p2 + offset_next
 		
-		st.add_vertex(v1); st.add_vertex(v3); st.add_vertex(v2)
-		st.add_vertex(v2); st.add_vertex(v3); st.add_vertex(v4)
+		# Normales radiales (perpendiculares al eje 'up')
+		var n_r = (offset / r).normalized()
+		var n_rn = (offset_next / r).normalized()
+		
+		# FIX: Evitar triángulos degenerados si r=0 o p1=p2
+		if v1.distance_squared_to(v2) > 0.00001 and v1.distance_squared_to(v3) > 0.00001:
+			st.add_normal(n_r); st.add_vertex(v1)
+			st.add_normal(n_r); st.add_vertex(v3)
+			st.add_normal(n_rn); st.add_vertex(v2)
+		if v2.distance_squared_to(v4) > 0.00001 and v2.distance_squared_to(v3) > 0.00001:
+			st.add_normal(n_rn); st.add_vertex(v2)
+			st.add_normal(n_rn); st.add_vertex(v3)
+			st.add_normal(n_rn); st.add_vertex(v4)
 
 func _add_tapered_cylinder_oriented(st, p1, p2, r1, r2):
 	# Safety: Validate radius parameters
@@ -218,10 +276,8 @@ func _add_tapered_cylinder_oriented(st, p1, p2, r1, r2):
 		return
 	
 	var dir = (p2 - p1).normalized()
-	var up = dir
-	var right = up.cross(Vector3.UP).normalized()
-	if right.length() < 0.01: right = Vector3.RIGHT
-	var forward = right.cross(up).normalized()
+	var basis = _get_stable_basis(dir)
+	var right = basis[0]; var up = basis[1]; var forward = basis[2]
 	
 	var steps = 16 
 	for i in range(steps * 2):
@@ -239,6 +295,17 @@ func _add_tapered_cylinder_oriented(st, p1, p2, r1, r2):
 		var v3 = p2 + offset2
 		var v4 = p2 + offset2_next
 		
-		st.add_vertex(v1); st.add_vertex(v3); st.add_vertex(v2)
-		st.add_vertex(v2); st.add_vertex(v3); st.add_vertex(v4)
+		# Normales radiales (perpendiculares al eje 'up')
+		var n_r = (offset1 / r1).normalized() if r1 > 0 else up
+		var n_rn = (offset1_next / r1).normalized() if r1 > 0 else up
+		
+		# FIX: Seguridad ante radios cero o puntos idénticos
+		if v1.distance_squared_to(v2) > 0.00001 and v1.distance_squared_to(v3) > 0.00001:
+			st.add_normal(n_r); st.add_vertex(v1)
+			st.add_normal(n_r); st.add_vertex(v3)
+			st.add_normal(n_rn); st.add_vertex(v2)
+		if v2.distance_squared_to(v4) > 0.00001 and v2.distance_squared_to(v3) > 0.00001:
+			st.add_normal(n_rn); st.add_vertex(v2)
+			st.add_normal(n_rn); st.add_vertex(v3)
+			st.add_normal(n_rn); st.add_vertex(v4)
 

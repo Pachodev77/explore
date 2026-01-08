@@ -25,17 +25,22 @@ var body_materials = {
 }
 
 func _ready():
-	# OPTIMIZACIÓN + FIX: Siempre crear skeleton, solo cachear el mesh
-	# Esto arregla la animación que estaba rota
-	var cache_path = "user://humanoid_cache.tres"
+	# FORZAR REGENERACIÓN: Borrar cachés viejos para asegurar que el cambio se vea
+	var dir = Directory.new()
+	if dir.open("user://") == OK:
+		dir.list_dir_begin()
+		var file_name = dir.get_next()
+		while file_name != "":
+			if file_name.begins_with("humanoid_cache_"):
+				dir.remove(file_name)
+				print("DEBUG: Cache eliminado:", file_name)
+			file_name = dir.get_next()
+	
+	var cache_path = "user://humanoid_cache_final_v7.tres"
 	var cached_mesh = null
 	
-	# Intentar cargar mesh cacheado
-	var file = File.new()
-	if file.file_exists(cache_path):
-		cached_mesh = load(cache_path)
+	print("--- INICIANDO GENERACIÓN DE HUMANOIDE V33 (BIGGER HANDS) ---")
 	
-	# SIEMPRE crear el skeleton (necesario para animación)
 	_setup_materials()
 	_generate_rig()  # Crea el skeleton
 	
@@ -75,6 +80,7 @@ func _setup_materials():
 		"Hips": ["Hips"],
 		"Abdomen": ["Spine", "Spine2"],
 		"Hair": ["Head"],
+		"Nose": ["Head"],
 		"Eyes": ["Head"],
 		"Mouth": ["Head"],
 		"Shoulders": ["ShoulderL", "ShoulderR"],
@@ -159,21 +165,24 @@ func _generate_skinned_mesh():
 			["Hips", Vector3(0, 0.95, 0), Vector3(0.22, 0.16, 0.16)]
 		],
 		"Abdomen": [
-			["Spine", Vector3(0, 1.1, 0), Vector3(0.2, 0.2, 0.14)],
-			["Spine2", Vector3(0, 1.3, 0), Vector3(0.24, 0.25, 0.2)]
+			["Spine", Vector3(0, 1.1, 0), Vector3(0.18, 0.18, 0.12)],
+			["Spine2", Vector3(0, 1.3, 0), Vector3(0.22, 0.23, 0.18)]
 		],
 		"Head": [
-			["Head", Vector3(0, 1.75, 0.02), Vector3(0.13, 0.19, 0.15)]
+			["Head", Vector3(0, 1.73, 0.02), Vector3(0.13, 0.19, 0.14)] # Reducido Z de 0.15 a 0.14
 		],
 		"Eyes": [
-			["Head", Vector3(0.04, 1.8, 0.16), Vector3(0.015, 0.015, 0.01)], # Ojo R
-			["Head", Vector3(-0.04, 1.8, 0.16), Vector3(0.015, 0.015, 0.01)] # Ojo L
+			["Head", Vector3(0.038, 1.73, 0.158), Vector3(0.016, 0.016, 0.012)], # Un poco más adentro
+			["Head", Vector3(-0.038, 1.73, 0.158), Vector3(0.016, 0.016, 0.012)]
 		],
 		"Mouth": [
-			["Head", Vector3(0, 1.7, 0.16), Vector3(0.03, 0.01, 0.01)]
+			["Head", Vector3(0, 1.66, 0.148), Vector3(0.045, 0.01, 0.012)] # Un poco más arriba (de 1.63 a 1.66)
 		],
 		"Hair": [
-			["Head", Vector3(0, 1.82, -0.02), Vector3(0.15, 0.18, 0.16)]
+			["Head", Vector3(0, 1.81, -0.01), Vector3(0.135, 0.16, 0.155)]
+		],
+		"Nose": [
+			["Head", Vector3(0, 1.7, 0.16), Vector3(0.015, 0.025, 0.02)] # Un poco más adentro
 		],
 		"Neck": [
 			["Neck", Vector3(0, 1.55, 0), Vector3(0.06, 0.25, 0.06)]
@@ -192,10 +201,10 @@ func _generate_skinned_mesh():
 		groups["Shoulders"].append(["Shoulder"+side, Vector3(0.21*sm, 1.4, 0), Vector3(0.09, 0.09, 0.09)])
 		groups["UpperArms"].append(["UpperArm"+side, Vector3(0.24*sm, 1.23, 0), Vector3(0.08, 0.2, 0.08)])
 		groups["LowerArms"].append(["LowerArm"+side, Vector3(0.26*sm, 1.05, 0), Vector3(0.07, 0.2, 0.07)])
-		groups["Hands"].append(["Hand"+side, Vector3(0.28*sm, 0.85, 0), Vector3(0.04, 0.07, 0.035)])
+		groups["Hands"].append(["Hand"+side, Vector3(0.28*sm, 0.85, 0), Vector3(0.06, 0.09, 0.05)])
 		
 		groups["UpperLegs"].append(["UpperLeg"+side, Vector3(0.11*sm, 0.75, 0), Vector3(0.11, 0.2, 0.11)])
-		groups["LowerLegs"].append(["LowerLeg"+side, Vector3(0.11*sm, 0.35, 0), Vector3(0.09, 0.3, 0.09)])
+		groups["LowerLegs"].append(["LowerLeg"+side, Vector3(0.11*sm, 0.31, 0), Vector3(0.09, 0.3, 0.09)])
 		
 		# PIE (Base en tobillo z=0, extensión hacia adelante +Z)
 		# Centro Y ajustado para que la base plana esté en Y=0 (size.y * 0.3)
@@ -225,12 +234,12 @@ func _generate_skinned_mesh():
 			
 			var offset = verts.size()
 			var p_verts = sphere_arrays[Mesh.ARRAY_VERTEX]
-			var p_norms = sphere_arrays[Mesh.ARRAY_NORMAL]
 			var p_uvs = sphere_arrays[Mesh.ARRAY_TEX_UV]
 			var p_indices = sphere_arrays[Mesh.ARRAY_INDEX]
 			
 			var is_foot = b_name.begins_with("Foot")
 			var is_head = b_name.begins_with("Head")
+			var is_lower_leg = b_name.begins_with("LowerLeg")
 			
 			for i in range(p_verts.size()):
 				var v_orig = p_verts[i] # La esfera unitaria (-1 a 1)
@@ -238,15 +247,62 @@ func _generate_skinned_mesh():
 				
 				# 1. DEFORMACIÓN ANATÓMICA (CABEZA HUMANA)
 				if is_head:
-					# Estrechar la mandíbula (Y bajo) y ensanchar sutilmente la parte superior
+					# Tapering Anatómico Pro:
+					# - Cráneo (Y > 0): Domo con aplanamiento temporal (lados)
+					# - Mandíbula (Y < 0): Estrechamiento hacia el mentón
 					var taper = 1.0
 					if v_orig.y < 0:
-						taper = lerp(0.65, 1.0, (v_orig.y + 1.0) / 1.0)
+						taper = lerp(0.52, 1.0, (v_orig.y + 1.0) / 1.0)
 					else:
-						taper = lerp(1.0, 0.9, v_orig.y) # Ensanchar/estabilizar cráneo
+						# Aplanar arriba (Coronilla) - Extremo (v.y * 0.7)
+						if v_orig.y > 0.6:
+							v.y *= 0.7
+						taper = lerp(1.0, 0.82, pow(v_orig.y, 2))
 					
 					v.x *= taper
-					v.z *= (taper * 1.1) if v_orig.z > 0 else taper # Un poco más de volumen facial
+					# Aplanamiento temporal sutil
+					v.x *= (1.0 - abs(v_orig.x) * 0.05)
+					
+					# Nuca (Z-) plana y cara (Z+) normal - Extremo (v.z * 0.7)
+					if v_orig.z < 0:
+						v.z *= 0.7 # Aplanar atrás (antes 0.80)
+						v.x *= 1.02 
+					else:
+						v.z *= 1.02 # Cara
+						# v.x permanece normal adelante
+				
+				# 1.5 DEFORMACIÓN DE ESPALDA, PECHO Y CADERA (APLANAR)
+				if b_name == "Spine" or b_name == "Spine2":
+					if v_orig.z < 0:
+						# Espalda más plana
+						v.z *= 0.65
+					elif b_name == "Spine2" and v_orig.z > 0:
+						# Pecho un poco más plano
+						v.z *= 0.82
+				elif b_name == "Hips":
+					# Aplanar cadera adelante y atrás para que sea menos bulbosa
+					v.z *= 0.72
+					# Aplanar lados de la cadera (NUEVO)
+					v.x *= 0.85
+				
+				# 1.6 DEFORMACIÓN DE PANTORRILLAS (TAPERING EXTREMO)
+				# Esto reduce el grosor del tobillo para que la bota/pie se vea mejor
+				if is_lower_leg:
+					var taper = 1.0
+					if v_orig.y < 0:
+						# Taper agresivo hacia el tobillo: de 1.0 (medio) a 0.3 (tobillo)
+						var t = (v_orig.y + 1.0) / 1.0
+						taper = lerp(0.3, 1.0, t) # 30% en el punto más bajo
+					else:
+						# Ensanchar hacia la rodilla (punto superior del LowerLeg)
+						# Esto le da un aspecto más atlético y natural.
+						taper = lerp(1.0, 1.15, v_orig.y) # 115% de ancho arriba
+					
+					v.x *= taper
+					v.z *= taper
+					
+					if i == 0:
+						print("DEBUG: Modificando PANTORRILLA ", b_name, " con taper ", taper)
 				
 				# 2. ESCALADO
 				v.x *= size.x; v.y *= size.y; v.z *= size.z
