@@ -588,18 +588,11 @@ margin_right = 540.0
 margin_bottom = -60.0
 mouse_filter = 2
 
-[node name="Bolt" type="ColorRect" parent="ShortcutsContainer"]
+[node name="Torch" type="ColorRect" parent="ShortcutsContainer"]
 material = SubResource( 4 )
 margin_left = 70.0
 margin_right = 140.0
 margin_bottom = 70.0
-
-[node name="Shield" type="ColorRect" parent="ShortcutsContainer"]
-material = SubResource( 4 )
-margin_left = 70.0
-margin_top = 140.0
-margin_right = 140.0
-margin_bottom = 210.0
 
 [node name="Zoom" type="ColorRect" parent="ShortcutsContainer"]
 material = SubResource( 4 )
@@ -610,9 +603,16 @@ margin_bottom = 140.0
 [node name="Label" type="Label" parent="ShortcutsContainer/Zoom"]
 anchor_right = 1.0
 anchor_bottom = 1.0
-text = "Z"
+text = "ZOOM"
 align = 1
 valign = 1
+
+[node name="Shield" type="ColorRect" parent="ShortcutsContainer"]
+material = SubResource( 4 )
+margin_left = 70.0
+margin_top = 140.0
+margin_right = 140.0
+margin_bottom = 210.0
 
 [node name="Map" type="ColorRect" parent="ShortcutsContainer"]
 material = SubResource( 4 )

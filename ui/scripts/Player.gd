@@ -13,13 +13,7 @@ var current_camera_state = CameraState.FAR
 onready var camera_pivot = $CameraPivot
 
 func _ready():
-	# Safety Check for exported variables
-	if not speed: speed = 6.0
-	if not rotation_speed: rotation_speed = 2.0
-
-	# ------------------------------------------------------------------
-	# HUD CONNECTION
-	# ------------------------------------------------------------------
+	yield(get_tree(), "idle_frame")
 	var hud = get_tree().root.find_node("MainHUD", true, false)
 	if hud:
 		hud.connect("joystick_moved", self, "_on_joystick_moved")
@@ -28,6 +22,7 @@ func _ready():
 		hud.connect("mount_pressed", self, "_on_mount_pressed")
 		hud.connect("run_pressed", self, "_on_run_pressed")
 		hud.connect("jump_pressed", self, "_on_jump_pressed")
+		hud.connect("torch_pressed", self, "_on_torch_pressed")
 		self.hud_ref = hud # Guardar referencia para actualizar botón
 	
 	# Asegurar que la cámara inicie recta y sin inclinación
@@ -57,12 +52,109 @@ func _init_reins():
 		m.params_cull_mode = SpatialMaterial.CULL_DISABLED # Ver por ambos lados
 		reins_line.material_override = m
 		add_child(reins_line)
+	
+	_create_torch()
+
+var torch_active = false
+var torch_node : Spatial = null
+
+func _create_torch():
+	torch_node = Spatial.new()
+	torch_node.name = "Torch"
+	torch_node.visible = false
+	add_child(torch_node)
+	
+	# Malla de la antorcha (palo) - BAJAR PARA QUE SE VEA EN EL PUÑO
+	var mesh_inst = MeshInstance.new()
+	var cylinder = CylinderMesh.new()
+	cylinder.top_radius = 0.03
+	cylinder.bottom_radius = 0.02
+	cylinder.height = 0.45
+	mesh_inst.mesh = cylinder
+	
+	var mat = SpatialMaterial.new()
+	mat.albedo_color = Color(0.4, 0.2, 0.1)
+	mesh_inst.material_override = mat
+	torch_node.add_child(mesh_inst)
+	# Bajamos la malla para que el palo "atraviese" la mano y parezca sujeto (antes 0.225)
+	mesh_inst.translation.y = 0.05 
+	
+	# Luz (ELEVAR PARA EVITAR SOMBRAS DEL JUGADOR)
+	var light = OmniLight.new()
+	light.name = "OmniLight"
+	light.light_color = Color(1.0, 0.6, 0.2)
+	light.light_energy = 2.0
+	light.omni_range = 22.0
+	light.omni_attenuation = 2.5
+	# OPTIMIZACIÓN MÓVIL: Desactivar sombras de antorcha en móviles para ganar FPS
+	light.shadow_enabled = not (OS.has_feature("Android") or OS.has_feature("iOS"))
+	light.shadow_bias = 1.5 
+	light.translation.y = 0.85 
+	light.translation.z = 0.25 
+	torch_node.add_child(light)
+	
+	# Fuego (BAJAR CON EL PALO)
+	var fire_mesh = MeshInstance.new()
+	var cone = CylinderMesh.new()
+	cone.top_radius = 0.0 
+	cone.bottom_radius = 0.07 
+	cone.height = 0.25
+	fire_mesh.mesh = cone
+	
+	var fire_mat = SpatialMaterial.new()
+	fire_mat.albedo_color = Color(1.0, 0.45, 0.0)
+	fire_mat.flags_unshaded = true 
+	fire_mesh.material_override = fire_mat
+	# Ajustado para que esté en el nuevo tope del palo (0.05 + 0.225 = 0.275)
+	fire_mesh.translation.y = 0.275 + 0.125
+	torch_node.add_child(fire_mesh)
+
+func _on_torch_pressed():
+	print("DEBUG: Señal TORCH recibida en Player")
+	torch_active = !torch_active
+	if torch_node:
+		torch_node.visible = torch_active
+		
+		# CONEXIÓN FÍSICA PRO: Usar BoneAttachment para evitar vibraciones
+		if torch_active and torch_node.get_parent() == self:
+			var hum = $MeshInstance
+			if hum and hum.get("hand_r_attachment"):
+				var attach = hum.hand_r_attachment
+				remove_child(torch_node)
+				attach.add_child(torch_node)
+				
+				# Configurar posición local fija (Ya no se actualiza en _process)
+				torch_node.translation = Vector3(0.01, -0.14, 0.02)
+				torch_node.rotation_degrees = Vector3(110, 0, 0)
+	
+	if $WalkAnimator.has_method("set_torch"):
+		$WalkAnimator.set_torch(torch_active)
 
 func _process(_delta):
+	# 1. RIENDAS
 	if is_riding and current_horse and reins_line:
 		_draw_reins()
 	elif reins_line:
 		reins_line.clear()
+	
+	# 2. ANTORCHA (Flicker - OPTIMIZADO: cada 3 frames)
+	if torch_active:
+		_torch_flicker_tick += 1
+		if _torch_flicker_tick >= 3:
+			_torch_flicker_tick = 0
+			if _torch_light_ref == null and torch_node:
+				_torch_light_ref = torch_node.get_node_or_null("OmniLight")
+			if _torch_light_ref:
+				var time = OS.get_ticks_msec() * 0.001
+				var noise = sin(time * 20.0) * 0.15 + sin(time * 35.0) * 0.05
+				_torch_light_ref.light_energy = 1.8 + noise
+				_torch_light_ref.omni_range = 21.0 + noise * 4.0
+
+var _torch_flicker_tick = 0
+var _torch_light_ref = null
+
+# La función _update_torch_transform ya no es necesaria, 
+# se usa el sistema de BoneAttachment de Godot para máxima estabilidad.
 
 func _draw_reins():
 	reins_line.clear()
@@ -84,6 +176,10 @@ func _draw_reins():
 		if h_r != -1:
 			var hand_tf = skel.get_bone_global_pose(h_r)
 			p_r = skel.global_transform.xform(hand_tf.xform(Vector3(0, -0.15, 0)))
+			
+	# --- NUEVO: Si la antorcha está activa, ambas riendas van a la mano izquierda ---
+	if torch_active:
+		p_r = p_l
 
 	# 2. Punto destino CENTRAL: Boca del caballo
 	var mouth_center = current_horse.global_transform.origin + Vector3(0, 1.5, 0.8) 

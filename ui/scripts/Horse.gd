@@ -44,6 +44,8 @@ var move_timer = 0.0
 var idle_target_dir = Vector3.ZERO
 var is_eating = true
 var eating_weight = 0.0 # Para suavizar el bajar la cabeza
+var ridden_idle_timer = 0.0
+var ridden_is_eating = true
 
 # --- SISTEMA DE LLAMADA ---
 var calling_player = null
@@ -72,7 +74,7 @@ func _on_screen_entered(): screen_visible = true
 func _on_screen_exited(): screen_visible = false
 
 func _physics_process(delta):
-	if not screen_visible and not is_ridden:
+	if not screen_visible and not is_ridden and not calling_player:
 		return
 		
 	physics_tick += 1
@@ -96,6 +98,11 @@ func _physics_process(delta):
 	else:
 		if not is_on_floor():
 			velocity.y -= gravity * effective_delta
+			
+	# SEGURIDAD: Evitar caída al vacío
+	if global_transform.origin.y < -30.0:
+		global_transform.origin.y = 10.0
+		velocity.y = 0
 	
 	# --- MOVIMIENTO Y SALTO ---
 	match current_jump_state:
@@ -131,6 +138,7 @@ func _physics_process(delta):
 	velocity = move_and_slide_with_snap(velocity, snap, Vector3.UP, true, 4, deg2rad(70))
 	
 	_update_smoothed_parameters(effective_delta)
+	_update_eating_weight(effective_delta)
 	
 	var horizontal_speed = Vector3(velocity.x, 0, velocity.z).length()
 	var target_gait = 1.0 if (rider_sprinting and horizontal_speed > speed * 0.8) else 0.0
@@ -229,16 +237,23 @@ func _animate_gallop(p):
 		var neck_bounce = sin(p * TAU - 0.5) * 0.1 * speed_ratio
 		var neck_lowering = gait_lerp * 0.4
 		
-		# POSE DE COMER: Bajar el cuello gradualmente
-		var eat_pose = -eating_weight * deg2rad(110.0) # Aún más bajo (antes 85)
+		# POSE DE COMER: Bajar el cuello aún más agresivamente
+		var eat_pose = -eating_weight * deg2rad(130.0) # Aumentado de 110 a 130
 		p_nodes.neck_base.rotation.x = -anim_pitch * 0.6 + neck_bounce - neck_lowering + eat_pose
 		
+		# Desplazar la base del cuello hacia abajo y adelante al comer para mayor alcance
+		var neck_offset = Vector3(0, -eating_weight * mesh_gen.hu * 0.25, -eating_weight * mesh_gen.hu * 0.1)
+		# Suponiendo que la posición base es rib_pos + Vector3(0, hu*0.3, -hu*0.7)
+		# Mejor resetear a la base y sumar el offset
+		var rib_p = Vector3(0, mesh_gen.hu*0.05, -mesh_gen.hu * 1.5 + mesh_gen.hu*0.5)
+		p_nodes.neck_base.translation = rib_p + Vector3(0, mesh_gen.hu*0.3, -mesh_gen.hu*0.7) + neck_offset
+		
 		if "neck_mid" in p_nodes:
-			# Rotación positiva para "estirar" el cuello en lugar de encogerlo
-			p_nodes.neck_mid.rotation.x = eating_weight * deg2rad(10.0)
+			# Seguir estirando el cuello (compensación positiva)
+			p_nodes.neck_mid.rotation.x = eating_weight * deg2rad(15.0)
 		if "head" in p_nodes:
-			# Rotación positiva para que el hocico apunte hacia adelante/suelo y no al pecho
-			p_nodes.head.rotation.x = eating_weight * deg2rad(25.0)
+			# Apuntar la cabeza hacia el suelo
+			p_nodes.head.rotation.x = eating_weight * deg2rad(35.0)
 		
 	if "tail" in p_nodes:
 		var tail_lift = lerp(0.3, 0.8, gait_lerp)
@@ -317,25 +332,6 @@ func _process_idle_movement(delta):
 			idle_target_dir = Vector3(sin(rand_angle), 0, cos(rand_angle))
 			move_timer = rand_range(4, 8)
 	
-	# Mezclar peso de animación de comer
-	# El caballo come si:
-	# 1. No está montado y la IA dice 'is_eating'
-	# 2. O está montado pero el jinete no se mueve
-	var horizontal_speed = Vector3(velocity.x, 0, velocity.z).length()
-	var is_still = horizontal_speed < 0.1
-	
-	var should_eat = false
-	if is_ridden:
-		should_eat = is_still # Come si está quieto con jinete
-	else:
-		should_eat = is_eating and is_still # Comportamiento de IA normal
-		
-	var target_eat_w = 1.0 if should_eat else 0.0
-	
-	# Velocidad de lerp: más lenta para bajar (2.0), muy rápida para subir (8.0)
-	var lerp_v = 2.0 if target_eat_w > eating_weight else 8.0
-	eating_weight = lerp(eating_weight, target_eat_w, lerp_v * delta)
-	
 	# Rotación y movimiento
 	if not is_eating and idle_target_dir.length() > 0.1:
 		var target_basis = Transform.IDENTITY.looking_at(idle_target_dir, Vector3.UP).basis
@@ -349,6 +345,38 @@ func _process_idle_movement(delta):
 		# Frenado suave
 		velocity.x = lerp(velocity.x, 0, 4 * delta)
 		velocity.z = lerp(velocity.z, 0, 4 * delta)
+
+func _update_eating_weight(delta):
+	# Mezclar peso de animación de comer
+	# El caballo come si:
+	# 1. No está montado y la IA dice 'is_eating'
+	# 2. O está montado pero el jinete no se mueve
+	var horizontal_speed = Vector3(velocity.x, 0, velocity.z).length()
+	var is_still = horizontal_speed < 0.1
+	
+	var should_eat = false
+	if is_ridden:
+		if is_still:
+			# LÓGICA CÍCLICA: No comer siempre de forma estática
+			ridden_idle_timer -= delta
+			if ridden_idle_timer <= 0:
+				ridden_is_eating = !ridden_is_eating
+				# Si va a comer, que lo haga por unos 6-12 segundos. Si levanta la cabeza, por 3-5 segundos.
+				ridden_idle_timer = rand_range(6, 12) if ridden_is_eating else rand_range(3, 5)
+			should_eat = ridden_is_eating
+		else:
+			# Si se mueve, resetear para que empiece comiendo la próxima vez que pare
+			ridden_idle_timer = 2.0 # Esperar un poco al parar antes de bajar la cabeza
+			ridden_is_eating = true
+			should_eat = false
+	else:
+		should_eat = is_eating and is_still # Comportamiento de IA normal
+		
+	var target_eat_w = 1.0 if should_eat else 0.0
+	
+	# Velocidad de lerp: más lenta para bajar (2.0), muy rápida para subir (8.0)
+	var lerp_v = 2.0 if target_eat_w > eating_weight else 8.0
+	eating_weight = lerp(eating_weight, target_eat_w, lerp_v * delta)
 
 func _process_call_movement(delta):
 	if not calling_player: return

@@ -6,6 +6,7 @@ signal zoom_pressed()
 signal mount_pressed()
 signal run_pressed(is_active)
 signal jump_pressed()
+signal torch_pressed()
 
 func set_mount_visible(is_visible):
 	if buttons.has("mount"):
@@ -32,10 +33,10 @@ var settings_panel : Control
 onready var buttons = {
 	"attack": $ActionsContainer/Attack,
 	"jump": $ActionsContainer/Jump,
-	"bolt": $ShortcutsContainer/Bolt,
 	"shield": $ShortcutsContainer/Shield,
 	"map": $ShortcutsContainer/Map,
 	"zoom": $ShortcutsContainer/Zoom,
+	"torch": $ShortcutsContainer/Torch,
 	"mount": $ActionsContainer/Mount,
 	"run": $ActionsContainer/Run
 }
@@ -106,6 +107,16 @@ func _ready():
 	
 	_style_buttons()
 	
+	# Etiqueta para el botón de antorcha
+	if buttons.has("torch"):
+		var label = Label.new()
+		label.text = "TORCH"
+		label.align = Label.ALIGN_CENTER
+		label.valign = Label.VALIGN_CENTER
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE # CRÍTICO: No bloquear clics
+		label.set_anchors_and_margins_preset(Control.PRESET_WIDE)
+		buttons["torch"].add_child(label)
+	
 	# FIX Z-ORDER: Sidebar debe estar ENCIMA de los joysticks para recibir input
 	$Sidebar.raise()
 
@@ -131,7 +142,7 @@ func _style_buttons():
 	if right_joy: right_joy.material = mat_red
 		
 	# Aplicar a botones izquierdos (AZUL)
-	for b in ["bolt", "shield", "map", "zoom"]:
+	for b in ["bolt", "shield", "map", "zoom", "torch"]:
 		if buttons.has(b): buttons[b].material = mat_blue
 	
 	# Joystick Izquierdo (Azul)
@@ -214,11 +225,15 @@ func _on_button_input(event, btn_name):
 			if now - last_press_time < 150: return 
 			last_press_time = now
 			
+			print("DEBUG: Botón clickeado: ", btn_name)
 			animate_button_press(btn)
 			
 			# Acciones Instantáneas (se ejecutan al pulsar)
 			if btn_name == "zoom":
 				emit_signal("zoom_pressed")
+			elif btn_name == "torch":
+				print("DEBUG: Emitiendo torch_pressed")
+				emit_signal("torch_pressed")
 			elif btn_name == "map":
 				var map_panel = get_node_or_null("MapPanel")
 				if map_panel: map_panel.visible = !map_panel.visible

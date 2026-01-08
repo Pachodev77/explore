@@ -519,31 +519,29 @@ func create_water_plane():
 func _process(delta):
 	var p_pos = player.global_transform.origin
 	
-	# OPTIMIZACIÓN: Solo chequear cambio de tile/LOD cada 0.3 segundos
+	# OPTIMIZACIÓN: Solo chequear cambio de tile/LOD cada 0.4 segundos en móviles
 	update_timer -= delta
 	if update_timer <= 0:
-		update_timer = 0.3
+		update_timer = 0.4 # Aumentado de 0.3
 		var current_tile_coords = get_tile_coords(p_pos)
 		if current_tile_coords.distance_to(last_player_tile) > 0.5:
 			last_player_tile = current_tile_coords
 			update_tiles()
 		
-		# UPGRADE QUEUE: UPGRADE solo si es necesario y escalonado
+		# UPGRADE QUEUE: Solo hacer upgrade si está muy cerca (reducido para móviles)
 		for coords in active_tiles.keys():
 			var tile = active_tiles[coords]
 			if tile.has_method("upgrade_to_high_lod") and tile.current_lod == tile.TileLOD.LOW:
 				var dist = p_pos.distance_to(tile.global_transform.origin)
-				if dist < 320.0: 
+				if dist < 250.0: # Reducido de 320 para móviles
 					tile.upgrade_to_high_lod()
 					break 
 	
-	# SPAWN QUEUE: Sigue siendo 1 por frame para máxima fluidez al entrar en nuevas zonas
-	# SPAWN QUEUE: Máximo 1 por frame para evitar picos de CPU (lag)
+	# SPAWN QUEUE: 1 tile por frame (reducido a 4 candidatos de búsqueda)
 	if spawn_queue.size() > 0:
-		# Priorizar el más cercano al jugador siempre
 		var best_idx = 0
 		var min_d = 99999.0
-		for i in range(min(spawn_queue.size(), 8)): # Revisar solo los primeros para no pesar mucho
+		for i in range(min(spawn_queue.size(), 4)): # Reducido de 8 a 4
 			var d = p_pos.distance_to(Vector3(spawn_queue[i].x * tile_size, 0, spawn_queue[i].y * tile_size))
 			if d < min_d:
 				min_d = d
@@ -553,10 +551,14 @@ func _process(delta):
 		spawn_queue.remove(best_idx)
 		spawn_tile(int(coords.x), int(coords.y))
 	
-	var water = get_node_or_null("WaterPlane")
-	if water:
-		water.translation.x = p_pos.x
-		water.translation.z = p_pos.z
+	# Agua (Cacheada para evitar get_node_or_null cada frame)
+	if _cached_water == null:
+		_cached_water = get_node_or_null("WaterPlane")
+	if _cached_water:
+		_cached_water.translation.x = p_pos.x
+		_cached_water.translation.z = p_pos.z
+
+var _cached_water = null
 
 func spawn_tile(x, z):
 	var coords = Vector2(x, z)

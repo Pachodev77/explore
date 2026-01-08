@@ -16,8 +16,9 @@ var eating_weight = 0.0 # Suavizado para bajar la cabeza
 var biome_type = 0 # 0: Prairie
 
 var player_node = null
-var active_dist = 80.0
+var active_dist = 60.0 # Reducido de 80 para móviles
 var check_timer = 0.0
+var anim_throttle = 0
 
 onready var mesh_gen = $ProceduralMesh
 
@@ -40,13 +41,12 @@ var physics_tick = 0
 func _process(delta):
 	check_timer -= delta
 	if check_timer <= 0:
-		check_timer = 1.0 + rand_range(0.0, 0.5)
+		check_timer = 1.5 + rand_range(0.0, 0.5) # Chequeo menos frecuente
 		if player_node:
 			var d = global_transform.origin.distance_to(player_node.global_transform.origin)
 			var is_active = d < active_dist
 			set_physics_process(is_active)
-			# Distancia de visibilidad reducida ligeramente para móviles
-			if mesh_gen: mesh_gen.visible = d < 120.0 
+			if mesh_gen: mesh_gen.visible = d < 80.0 # Reducido de 120
 			
 	if not is_physics_processing():
 		return
@@ -60,6 +60,17 @@ func _physics_process(delta):
 	# Gravedad
 	if not is_on_floor():
 		velocity.y -= gravity * ed
+	
+	# SEGURIDAD: Evitar caída al vacío
+	if global_transform.origin.y < -30.0:
+		# Intentar reposicionar en el suelo (aproximado por ruido)
+		var hn = 0.0
+		if player_node and player_node.get_parent().has_method("get_road_influence"):
+			# El world manager está en el padre del jugador normalmente
+			pass 
+		# Snapping simple a nivel de mar + margen
+		global_transform.origin.y = 10.0
+		velocity.y = 0
 	
 	# IA de vaca
 	move_timer -= ed

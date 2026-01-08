@@ -139,7 +139,7 @@ func _generate_rig():
 	
 	for side in ["L", "R"]:
 		var sm = 1.0 if side == "R" else -1.0
-		var s = "Shoulder"+side; _add_bone(s, bone_ids["Spine2"], Vector3(0.21*sm, 0.1, 0))
+		var s = "Shoulder"+side; _add_bone(s, bone_ids["Spine2"], Vector3(0.18*sm, 0.1, 0))
 		var ua = "UpperArm"+side; _add_bone(ua, bone_ids[s], Vector3(0.03*sm, -0.02, 0))
 		var la = "LowerArm"+side; _add_bone(la, bone_ids[ua], Vector3(0, -0.2, 0))
 		var ul = "UpperLeg"+side; _add_bone(ul, bone_ids["Hips"], Vector3(0.11*sm, -0.05, 0))
@@ -147,7 +147,15 @@ func _generate_rig():
 		var ft = "Foot"+side; _add_bone(ft, bone_ids[ll], Vector3(0, -0.5, 0)) # Pivote en el tobillo
 		var hnd = "Hand"+side; _add_bone(hnd, bone_ids[la], Vector3(0, -0.22, 0)) # Pivote en la muñeca
 	
+	# CREAR ATTACHMENT PARA ACCESORIOS (Como la antorcha)
+	hand_r_attachment = BoneAttachment.new()
+	hand_r_attachment.bone_name = "HandR"
+	hand_r_attachment.name = "HandRAttachment"
+	skel_node.add_child(hand_r_attachment)
+	
 	print("DEBUG: Total de huesos creados:", skel_node.get_bone_count())
+
+var hand_r_attachment = null
 
 func _add_bone(name, parent, rest):
 	skel_node.add_bone(name)
@@ -198,10 +206,10 @@ func _generate_skinned_mesh():
 	
 	for side in ["L", "R"]:
 		var sm = 1.0 if side == "R" else -1.0
-		groups["Shoulders"].append(["Shoulder"+side, Vector3(0.21*sm, 1.4, 0), Vector3(0.09, 0.09, 0.09)])
-		groups["UpperArms"].append(["UpperArm"+side, Vector3(0.24*sm, 1.23, 0), Vector3(0.08, 0.2, 0.08)])
-		groups["LowerArms"].append(["LowerArm"+side, Vector3(0.26*sm, 1.05, 0), Vector3(0.07, 0.2, 0.07)])
-		groups["Hands"].append(["Hand"+side, Vector3(0.28*sm, 0.85, 0), Vector3(0.06, 0.09, 0.05)])
+		groups["Shoulders"].append(["Shoulder"+side, Vector3(0.18*sm, 1.4, 0), Vector3(0.09, 0.09, 0.09)])
+		groups["UpperArms"].append(["UpperArm"+side, Vector3(0.21*sm, 1.23, 0), Vector3(0.08, 0.2, 0.08)])
+		groups["LowerArms"].append(["LowerArm"+side, Vector3(0.23*sm, 1.05, 0), Vector3(0.07, 0.2, 0.07)])
+		groups["Hands"].append(["Hand"+side, Vector3(0.25*sm, 0.85, 0), Vector3(0.06, 0.09, 0.05)])
 		
 		groups["UpperLegs"].append(["UpperLeg"+side, Vector3(0.11*sm, 0.75, 0), Vector3(0.11, 0.2, 0.11)])
 		groups["LowerLegs"].append(["LowerLeg"+side, Vector3(0.11*sm, 0.31, 0), Vector3(0.09, 0.3, 0.09)])

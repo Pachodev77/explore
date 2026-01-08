@@ -25,13 +25,20 @@ func setup_biome(_dummy_type, shared_resources, _dummy_height = 0, is_spawn = fa
 	# 1. Aplicar Material de Bioma (Instantáneo)
 	mesh_instance.set_surface_material(0, shared_resources["ground_mat"])
 	
+	# LIMPIEZA: Eliminar decoraciones de su "vida anterior" si el tile es reciclado
+	for child in deco_container.get_children():
+		child.queue_free()
+	
 	# 2. Geometría (resolución depende de LOD)
 	var grid_res = GRID_RES_LOW if lod_level == TileLOD.LOW else GRID_RES_HIGH
 	
-	# IMPORTANTE: Asegurar que el objeto esté en el suelo antes de mostrarlo
-	# para evitar que se vea "volando" mientras se construye el mesh
 	visible = false 
-	_rebuild_mesh_and_physics(mesh_instance, shared_resources, is_spawn, grid_res, lod_level)
+	# Esperar a que la malla y el trimesh estén creados
+	var state = _rebuild_mesh_and_physics(mesh_instance, shared_resources, is_spawn, grid_res, lod_level)
+	if state is GDScriptFunctionState:
+		yield(state, "completed")
+	
+	if not is_instance_valid(self): return
 	visible = true
 	
 	# LOD_LOW: Skip decorations for speed
@@ -49,10 +56,10 @@ func upgrade_to_high_lod():
 	var deco_container = get_node_or_null("Decos")
 	if not mesh_instance or not deco_container: return
 	
-	_rebuild_mesh_and_physics(mesh_instance, current_shared_res, current_is_spawn, GRID_RES_HIGH, TileLOD.HIGH)
+	var state = _rebuild_mesh_and_physics(mesh_instance, current_shared_res, current_is_spawn, GRID_RES_HIGH, TileLOD.HIGH)
+	if state is GDScriptFunctionState:
+		yield(state, "completed")
 	
-	# STAGGERED UPGRADE: Yield to prevent freeze when upgrading
-	yield(get_tree(), "idle_frame")
 	if not is_instance_valid(self): return
 	
 	_add_decos_final(deco_container, current_shared_res, current_is_spawn)
@@ -387,7 +394,7 @@ func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn, grid_res = G
 func _add_decos_final(deco_container, shared_res, is_spawn):
 	# Limpieza previa
 	for child in deco_container.get_children():
-		child.free()
+		child.queue_free()
 		
 	seed(int(translation.x) + int(translation.z) + 123)
 	var tree_instances = []
@@ -526,10 +533,10 @@ func _add_animals(container, shared_res):
 	while deg <= -180: deg += 360
 	
 	if deg > 135 or deg <= -135: # PRAIRIE
-		if randf() < 0.25: # Chance reducido (antes 0.4)
+		if randf() < 0.12: # OPTIMIZADO: Reducido de 0.25 para menos entidades en móviles
 			var cow_scene = shared_res["cow_scene"]
 			if cow_scene:
-				var count = randi() % 3 + 2 # Grupos más pequeños
+				var count = randi() % 2 + 1 # Grupos más pequeños (1-2 en lugar de 2-4)
 				for i in range(count):
 					yield(get_tree(), "idle_frame")
 					if not is_instance_valid(self): return
@@ -541,10 +548,10 @@ func _add_animals(container, shared_res):
 					container.add_child(cow)
 	
 	elif deg > -135 and deg <= -45: # SNOW
-		if randf() < 0.20: # Chance reducido (antes 0.35)
+		if randf() < 0.10: # OPTIMIZADO: Reducido de 0.20
 			var goat_scene = shared_res["goat_scene"]
 			if goat_scene:
-				var count = randi() % 3 + 1
+				var count = randi() % 2 + 1 # Reducido de 3+1
 				for i in range(count):
 					yield(get_tree(), "idle_frame")
 					if not is_instance_valid(self): return

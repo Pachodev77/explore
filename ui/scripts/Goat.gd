@@ -17,7 +17,7 @@ var eating_weight = 0.0
 var biome_type = 2 # 2: Snow
 
 var player_node = null
-var active_dist = 80.0
+var active_dist = 60.0 # Reducido para móviles
 var check_timer = 0.0
 
 onready var mesh_gen = $ProceduralMesh
@@ -40,12 +40,12 @@ var physics_tick = 0
 func _process(delta):
 	check_timer -= delta
 	if check_timer <= 0:
-		check_timer = 1.0 + rand_range(0.0, 0.4)
+		check_timer = 1.5 + rand_range(0.0, 0.4) # Más lento
 		if player_node:
 			var d = global_transform.origin.distance_to(player_node.global_transform.origin)
 			var is_active = d < active_dist
 			set_physics_process(is_active)
-			if mesh_gen: mesh_gen.visible = d < 120.0 # Reducido para móviles
+			if mesh_gen: mesh_gen.visible = d < 80.0 # Reducido de 120
 			
 	if not is_physics_processing():
 		return
@@ -58,6 +58,11 @@ func _physics_process(delta):
 	
 	if not is_on_floor():
 		velocity.y -= gravity * ed
+	
+	# SEGURIDAD: Evitar caída al vacío
+	if global_transform.origin.y < -30.0:
+		global_transform.origin.y = 10.0
+		velocity.y = 0
 	
 	move_timer -= ed
 	if move_timer <= 0:

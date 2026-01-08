@@ -19,6 +19,7 @@ var bones = {
 var idle_phase = 0.0
 var idle_weight = 0.0
 var run_weight = 0.0
+var is_holding_torch = false
 
 # --- PARÁMETROS DE SUAVIZADO (FLUIDEZ) ---
 var curr_crouch = 0.0
@@ -67,15 +68,20 @@ func _find_skeleton():
 			bones[b] = skel.find_bone(b)
 
 func _process(delta):
-	if not skel or not screen_visible:
+	if not skel:
 		return
 	
-	# OPTIMIZACIÓN: Solo animar a 30 FPS internos si es necesario (alternar frames)
+	# OPTIMIZACIÓN MÓVIL: Saltar frames si estamos quietos y fuera de cámara
 	update_tick += 1
-	if update_tick % 2 != 0 and walk_speed < 0.1 and not is_riding:
-		# Si estamos quietos, podemos saltar frames sutilmente
-		pass
-
+	var is_moving = (is_walking and walk_speed > 0.1) or is_riding or current_jump_state != JumpState.IDLE
+	
+	if not screen_visible and not is_moving:
+		return # No animar si está fuera de pantalla y quieto
+	
+	# Si estamos quietos, solo actualizamos cada 2 frames (30fps efectivos)
+	if not is_moving and update_tick % 2 != 0:
+		return
+	
 	# Actualizar estados de salto
 	jump_timer += delta
 	if current_jump_state == JumpState.ANTICIPATION and jump_timer > 0.15:
@@ -91,7 +97,6 @@ func _process(delta):
 	else:
 		phase = lerp(phase, 0.0, 5.0 * delta)
 	
-	var is_moving = (is_walking and walk_speed > 0.1) or is_riding or current_jump_state != JumpState.IDLE
 	idle_weight = lerp(idle_weight, 0.0 if is_moving else 1.0, 4.0 * delta)
 	
 	var target_run = clamp((walk_speed - 1.0) / 0.8, 0.0, 1.0)
@@ -134,6 +139,9 @@ func set_jumping(jumping):
 	if jumping and current_jump_state == JumpState.IDLE and is_on_floor:
 		current_jump_state = JumpState.ANTICIPATION
 		jump_timer = 0.0
+
+func set_torch(active):
+	is_holding_torch = active
 
 func update_physics_state(v_vel, full_velocity, grounded):
 	vertical_velocity = v_vel
@@ -218,6 +226,9 @@ func _apply_idle_pose():
 			la_p.basis = la_p.basis.rotated(Vector3.RIGHT, deg2rad(-15.0) * idle_weight)
 			skel.set_bone_pose(l_arm, la_p)
 	
+	if is_holding_torch:
+		_apply_torch_arm_pose()
+	
 	# 3. Piernas estables y separadas (BIEN PARACO)
 	for side in ["L", "R"]:
 		var u_leg = bones["UpperLeg" + side]
@@ -291,6 +302,9 @@ func _animate_limbs(p):
 			
 			skel.set_bone_pose(u_arm, Transform(arm_rot, Vector3.ZERO))
 			skel.set_bone_pose(l_arm, Transform(Basis().rotated(Vector3.RIGHT, elbow_swing), Vector3.ZERO))
+			
+			if side == "R" and is_holding_torch:
+				_apply_torch_arm_pose()
 
 func _animate_jump_pro():
 	# Aplicar Poses con inclinación por inercia (Usando variables suavizadas)
@@ -414,9 +428,10 @@ func _animate_riding(p):
 	h_p.basis = h_p.basis.rotated(Vector3.RIGHT, -h_pitch * 0.4)
 	skel.set_bone_pose(bones["Hips"], h_p)
 	
-	# SPINE (Mantiene el equilibrio)
+	# SPINE (Mantiene el equilibrio e inclinación hacia adelante)
 	if bones["Spine2"] != -1:
-		var s_rot = Basis().rotated(Vector3.RIGHT, -h_pitch * 0.6)
+		# Añadimos 12 grados de inclinación constante hacia adelante + reacción al caballo
+		var s_rot = Basis().rotated(Vector3.RIGHT, deg2rad(12.0) - h_pitch * 0.6)
 		skel.set_bone_pose(bones["Spine2"], Transform(s_rot, Vector3.ZERO))
 	
 	# PIERNAS (Sentado estable)
@@ -448,3 +463,19 @@ func _animate_riding(p):
 			var inward_low = 10.0 if side == "L" else -10.0
 			rot = rot.rotated(Vector3.UP, deg2rad(inward_low))
 			skel.set_bone_pose(l_arm, Transform(rot, Vector3.ZERO))
+	
+	if is_holding_torch:
+		_apply_torch_arm_pose()
+
+func _apply_torch_arm_pose():
+	var u_arm = bones["UpperArmR"]
+	var l_arm = bones["LowerArmR"]
+	if u_arm != -1:
+		# Levantar brazo hacia adelante y arriba
+		var rot = Basis().rotated(Vector3.RIGHT, deg2rad(-80))
+		rot = rot.rotated(Vector3.UP, deg2rad(-15)) # Mano hacia el centro
+		skel.set_bone_pose(u_arm, Transform(rot, Vector3.ZERO))
+	if l_arm != -1:
+		# Doblar antebrazo un poco más
+		var rot = Basis().rotated(Vector3.RIGHT, deg2rad(-40))
+		skel.set_bone_pose(l_arm, Transform(rot, Vector3.ZERO))

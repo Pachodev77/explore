@@ -13,7 +13,9 @@ onready var stars_sphere = get_node_or_null("StarsSphere")
 
 var time_of_day : float = 0.5
 var last_update_time : float = 0.0
-const UPDATE_INTERVAL = 0.5  # Actualizar cada 0.5 segundos (2 veces por segundo - suficiente para movimiento suave)
+var sun_rot_timer : float = 0.0
+var cached_camera : Camera = null
+const UPDATE_INTERVAL = 0.5  # Actualizar cada 0.5 segundos
 
 # Colores precalculados
 const SKY_DAY_TOP = Color(0.2, 0.4, 0.8)
@@ -38,26 +40,27 @@ func _process(delta):
 	if time_of_day >= 1.0:
 		time_of_day -= 1.0
 	
-	# OPTIMIZACIÓN: Solo actualizar ambiente si el tiempo cambió significativamente (cada 1 segundo aprox)
+	# OPTIMIZACIÓN: Solo actualizar ambiente cada 0.5s
 	last_update_time += delta
 	if last_update_time > 0.5:
 		update_cycle()
 		last_update_time = 0.0
 	
-	# Rotación del sol (Más suave que el resto del ambiente)
-	var sun_rot_timer = get_meta("sun_rot_timer") if has_meta("sun_rot_timer") else 0.0
+	# Rotación del sol (Cada 0.1s es suficiente para suavidad)
 	sun_rot_timer += delta
 	if sun_rot_timer > 0.1:
 		var angle = (time_of_day - 0.25) * 360.0
 		sun.rotation_degrees = Vector3(-angle, 90, 0)
-		set_meta("sun_rot_timer", 0.0)
+		sun_rot_timer = 0.0
 	
-	# Seguir a la cámara (Brújula)
-	var cam = get_viewport().get_camera()
-	if cam:
-		global_transform.origin = cam.global_transform.origin
+	# Seguir a la cámara (CACHEADA para evitar get_viewport cada frame)
+	if not cached_camera or not is_instance_valid(cached_camera):
+		cached_camera = get_viewport().get_camera()
+	if cached_camera:
+		global_transform.origin = cached_camera.global_transform.origin
 	
-	if stars_sphere:
+	# Estrellas (Solo si el nodo existe y está visible de noche)
+	if stars_sphere and time_of_day < 0.25 or time_of_day > 0.75:
 		var mat = stars_sphere.get_surface_material(0)
 		if mat:
 			mat.set_shader_param("time_of_day", time_of_day)
