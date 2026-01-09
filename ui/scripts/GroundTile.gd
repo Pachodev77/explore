@@ -574,6 +574,6 @@ func _apply_mmi_final(container, parts, instances):
 			mm.set_instance_transform(i, instances[i])
 		mmi.multimesh = mm
 		if part.mat: mmi.material_override = part.mat
-		# OPTIMIZACIÓN: Quitar sombras de decoraciones lejanas para liberar GPU
-		mmi.cast_shadow = GeometryInstance.SHADOW_CASTING_SETTING_OFF
+		# Sombras activadas para vegetación (árboles y cactus)
+		mmi.cast_shadow = GeometryInstance.SHADOW_CASTING_SETTING_ON
 		container.add_child(mmi)

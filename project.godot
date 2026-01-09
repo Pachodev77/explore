@@ -21,12 +21,14 @@ _global_script_class_icons={
 [application]
 
 config/name="Juego1"
-run/main_scene="res://ui/scenes/Main3D.tscn"
+run/main_scene="res://ui/scenes/MainMenu.tscn"
 config/icon="res://ui/icons/inventory.jpg"
 
 [autoload]
 
 InventoryManager="*res://ui/scripts/InventoryManager.gd"
+LoadingManager="*res://ui/scripts/LoadingManager.gd"
+SceneManager="*res://ui/scripts/SceneManager.gd"
 
 [gui]
 

@@ -109,7 +109,10 @@ func _create_part_mesh(parent, p_name, pos, p_scale, type, dir = Vector3.ZERO, o
 	st.set_material(mat)
 	if type == "ellipsoid": _add_ellipsoid(st, Vector3.ZERO, p_scale, dir)
 	elif type == "tapered": _add_tapered(st, -dir*overlap, dir*overlap, p_scale.x, p_scale.y)
-	mi.mesh = st.commit(); return mi
+	mi.mesh = st.commit()
+	# Sombras activadas para la cabra
+	mi.cast_shadow = GeometryInstance.SHADOW_CASTING_SETTING_ON
+	return mi
 
 func _add_ellipsoid(st, center, scale, dir = Vector3.ZERO):
 	var steps = 12

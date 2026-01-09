@@ -173,6 +173,9 @@ func _create_part_mesh(parent: Node, p_name: String, pos: Vector3, p_scale: Vect
 
 	# st.generate_normals() # YA NO ES NECESARIO, LAS CALCULAMOS A MANO PARA FUSIONAR
 	mi.mesh = st.commit()
+	
+	# Sombras activadas para el caballo
+	mi.cast_shadow = GeometryInstance.SHADOW_CASTING_SETTING_ON
 	return mi
 
 func _get_stable_basis(up_dir: Vector3):

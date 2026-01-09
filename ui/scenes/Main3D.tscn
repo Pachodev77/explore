@@ -45,10 +45,11 @@ environment = SubResource( 4 )
 [node name="DirectionalLight" type="DirectionalLight" parent="."]
 transform = Transform( 0.999998, 0.00154267, 0.00154267, -0.00218166, 0.707105, 0.707105, 0, -0.707107, 0.707107, 2.19757, 5.45522, 1.19236 )
 shadow_enabled = true
-directional_shadow_mode = 1
-directional_shadow_blend_splits = true
-directional_shadow_depth_range = 1
-directional_shadow_max_distance = 120.0
+directional_shadow_mode = 0
+directional_shadow_split_1 = 0.3
+directional_shadow_normal_bias = 2.0
+directional_shadow_bias_split_scale = 0.5
+directional_shadow_max_distance = 80.0
 
 [node name="DayNightCycle" type="Spatial" parent="."]
 script = ExtResource( 4 )

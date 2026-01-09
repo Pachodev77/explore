@@ -15,6 +15,9 @@ func set_mount_visible(is_visible):
 # Joysticks (Ahora en contenedores flotantes sin panel)
 onready var left_joy = $MoveJoystickContainer/JoystickWell/Handle
 onready var right_joy = $CamJoystickContainer/JoystickWell/Handle
+onready var pause_btn = $Header/PauseBtn
+
+var pause_panel_instance = null
 
 var left_center = Vector2(120, 120)
 var right_center = Vector2(120, 120)
@@ -88,9 +91,7 @@ func _ready():
 	
 	# Forzar escalado de moneda
 	$Header/Currency/Diamonds/H/Icon.rect_min_size = Vector2(36, 36)
-	$Header/Currency/Diamonds/H/Value.rect_scale = Vector2(1.6, 1.6)
 	$Header/Currency/Gold/H/Icon.rect_min_size = Vector2(32, 32)
-	$Header/Currency/Gold/H/Value.rect_scale = Vector2(1.6, 1.6)
 	
 	# Instanciar MapPanel
 	var map_scene = load("res://ui/scenes/MapPanel.tscn")
@@ -119,6 +120,20 @@ func _ready():
 	
 	# FIX Z-ORDER: Sidebar debe estar ENCIMA de los joysticks para recibir input
 	$Sidebar.raise()
+	
+	# SETUP SISTEMA DE PAUSA
+	if pause_btn:
+		pause_btn.connect("gui_input", self, "_on_pause_btn_input")
+	
+	var pause_scn = load("res://ui/scenes/PausePanel.tscn")
+	if pause_scn:
+		pause_panel_instance = pause_scn.instance()
+		add_child(pause_panel_instance)
+		pause_panel_instance.visible = false
+		pause_panel_instance.connect("resume_requested", self, "_on_resume")
+		pause_panel_instance.connect("save_requested", self, "_on_save")
+		pause_panel_instance.connect("load_requested", self, "_on_load")
+		pause_panel_instance.connect("main_menu_requested", self, "_on_main_menu")
 
 func _style_buttons():
 	# Crear materiales programáticamente para asegurar consistencia
@@ -311,3 +326,31 @@ func _on_map_close():
 	var map_panel = get_node_or_null("MapPanel")
 	if map_panel:
 		map_panel.visible = false
+
+# LÓGICA DE PAUSA
+func _on_pause_btn_input(event):
+	if event is InputEventScreenTouch or event is InputEventMouseButton:
+		if event.pressed:
+			_toggle_pause()
+
+func _toggle_pause():
+	var new_state = !get_tree().paused
+	get_tree().paused = new_state
+	if pause_panel_instance:
+		pause_panel_instance.visible = new_state
+		if new_state: pause_panel_instance.raise()
+
+func _on_resume():
+	_toggle_pause()
+
+func _on_save():
+	print("Game Saved! (Mock)")
+	# Aquí iría la lógica real de guardado usando InventoryManager/WorldManager
+
+func _on_load():
+	print("Game Loaded! (Mock)")
+	# Aquí iría la lógica real de carga
+
+func _on_main_menu():
+	get_tree().paused = false # IMPORTANTE: Despausar antes de cambiar escena
+	get_tree().change_scene("res://ui/scenes/MainMenu.tscn")

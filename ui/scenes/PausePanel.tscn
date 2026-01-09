@@ -1,0 +1,77 @@
+[gd_scene load_steps=4 format=2]
+
+[ext_resource path="res://ui/scripts/PausePanel.gd" type="Script" id=1]
+[ext_resource path="res://ui/shaders/advanced_glass.shader" type="Shader" id=2]
+
+[sub_resource type="ShaderMaterial" id=1]
+shader = ExtResource( 2 )
+shader_param/blur_amount = 3.0
+shader_param/bg_color = Color( 0, 0, 0, 0.7 )
+shader_param/border_color = Color( 1, 1, 1, 0.1 )
+shader_param/corner_radius = 0.0
+shader_param/border_width = 0.0
+
+[node name="PausePanel" type="Control"]
+pause_mode = 2
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource( 1 )
+__meta__ = {
+"_edit_use_anchors_": false
+}
+
+[node name="Background" type="ColorRect" parent="."]
+material = SubResource( 1 )
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color( 0, 0, 0, 1 )
+
+[node name="CenterContainer" type="CenterContainer" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+__meta__ = {
+"_edit_use_anchors_": false
+}
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer"]
+margin_left = 384.0
+margin_top = 192.0
+margin_right = 640.0
+margin_bottom = 408.0
+custom_constants/separation = 20
+
+[node name="Label" type="Label" parent="CenterContainer/VBoxContainer"]
+margin_right = 256.0
+margin_bottom = 14.0
+text = "PAUSED"
+align = 1
+valign = 1
+uppercase = true
+
+[node name="ResumeBtn" type="Button" parent="CenterContainer/VBoxContainer"]
+margin_top = 34.0
+margin_right = 256.0
+margin_bottom = 74.0
+rect_min_size = Vector2( 256, 40 )
+text = "RESUME"
+
+[node name="SaveBtn" type="Button" parent="CenterContainer/VBoxContainer"]
+margin_top = 94.0
+margin_right = 256.0
+margin_bottom = 134.0
+rect_min_size = Vector2( 256, 40 )
+text = "SAVE GAME"
+
+[node name="LoadBtn" type="Button" parent="CenterContainer/VBoxContainer"]
+margin_top = 154.0
+margin_right = 256.0
+margin_bottom = 194.0
+rect_min_size = Vector2( 256, 40 )
+text = "LOAD GAME"
+
+[node name="MenuBtn" type="Button" parent="CenterContainer/VBoxContainer"]
+margin_top = 214.0
+margin_right = 256.0
+margin_bottom = 254.0
+rect_min_size = Vector2( 256, 40 )
+text = "MAIN MENU"

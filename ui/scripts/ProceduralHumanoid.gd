@@ -71,6 +71,11 @@ func _ready():
 	if skel_node:
 		self.skeleton = get_path_to(skel_node)
 		print("✅ Skeleton path asignado:", self.skeleton)
+	
+	# FIX SOMBRAS MÓVILES: Evitar auto-sombras internas en partes del cuerpo
+	# SHADOW_CASTING_SETTING_ON = proyecta sombras normales pero puede recibirlas (causa artefactos)
+	# SHADOW_CASTING_SETTING_SHADOWS_ONLY = solo proyecta, no recibe (limpio para móviles)
+	self.cast_shadow = GeometryInstance.SHADOW_CASTING_SETTING_ON
 
 func _setup_materials():
 	# Lista de partes que comparten material
