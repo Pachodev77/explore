@@ -46,7 +46,7 @@ func _generate_structure():
 
 	# Belly: Ligeramente más pequeño (hu*0.68, hu*0.76)
 	var mid_pos = (rib_pos + rear_pos) * 0.5 + Vector3(0, -hu*0.05, 0)
-	_create_part_mesh(body_root, "Belly", mid_pos, Vector3(hu*0.68, hu*0.76, hu*0.9), "ellipsoid")
+	_create_part_mesh(body_root, "Belly", mid_pos, Vector3(hu*0.5, hu*0.76, hu*0.9), "ellipsoid")
 
 	# 2. CUELLO Y CABEZA
 	var neck_base_node = Spatial.new()
@@ -239,7 +239,7 @@ func _spherical_oriented(lat, lon, right, up, forward):
 func _add_cylinder_between(st, p1, p2, r):
 	var dir = (p2 - p1).normalized()
 	var basis = _get_stable_basis(dir)
-	var right = basis[0]; var up = basis[1]; var forward = basis[2]
+	var right = basis[0]; var _up = basis[1]; var forward = basis[2]
 	
 	# IMPORTANTE: Invertimos el orden para que los vértices coincidan con la orientación de la esfera
 	# La esfera genera lon de 0 a 2PI. El cilindro debe usar el mismo 'lon' para sus anillos.

@@ -8,6 +8,7 @@ enum TileLOD { HIGH, LOW }
 const GRID_RES_HIGH = 12
 const GRID_RES_LOW = 4
 const TILE_SIZE = 150.0
+var harvested_instances = {} # Persistencia de tala: { "tree_mmi": [indices], ... }
 
 var current_lod = TileLOD.LOW
 var current_shared_res = null
@@ -46,6 +47,10 @@ func setup_biome(_dummy_type, shared_resources, _dummy_height = 0, is_spawn = fa
 		_add_decos_final(deco_container, shared_resources, is_spawn)
 		if is_spawn:
 			_add_fence(deco_container, shared_resources)
+			# Solo añadir la casa y el establo si es el tile central (0,0)
+			if abs(translation.x) < 1.0 and abs(translation.z) < 1.0:
+				_add_farmhouse(deco_container, shared_resources)
+				_add_stable(deco_container, shared_resources)
 
 func upgrade_to_high_lod():
 	if current_lod == TileLOD.HIGH: return
@@ -65,6 +70,9 @@ func upgrade_to_high_lod():
 	_add_decos_final(deco_container, current_shared_res, current_is_spawn)
 	if current_is_spawn:
 		_add_fence(deco_container, current_shared_res)
+		if abs(translation.x) < 1.0 and abs(translation.z) < 1.0:
+			_add_farmhouse(deco_container, current_shared_res)
+			_add_stable(deco_container, current_shared_res)
 
 func _add_fence(container, shared_res):
 	# OPTIMIZACIÓN: Material Cacheado
@@ -242,6 +250,409 @@ func _add_gate(container, pos, rot_deg, shared_res):
 	# --- COLISIONES INVISIBLES DE LA VALLA ---
 	_add_fence_collisions(container)
 
+func _add_farmhouse(container, shared_res):
+	var house_node = Spatial.new()
+	# Posicionamiento: Un poco más alejada para dar espacio al porche y escaleras
+	house_node.translation = Vector3(-18.0, 1.9, -18.0) 
+	house_node.rotation_degrees.y = 45.0
+	container.add_child(house_node)
+	
+	# --- PALETA DE MATERIALES SOFISTICADA ---
+	var mat_wall = SpatialMaterial.new()
+	mat_wall.albedo_color = Color(0.98, 0.98, 0.95) # Crema premium
+	mat_wall.roughness = 0.85
+	
+	var mat_base = SpatialMaterial.new()
+	mat_base.albedo_color = Color(0.3, 0.3, 0.32) # Piedra/Cemento oscuro
+	mat_base.roughness = 0.9
+	
+	var mat_roof = SpatialMaterial.new()
+	mat_roof.albedo_color = Color(0.45, 0.12, 0.12) # Rojo terracota
+	mat_roof.roughness = 0.6
+	
+	var mat_wood_dark = shared_res.get("wood_mat")
+	if not mat_wood_dark:
+		mat_wood_dark = SpatialMaterial.new()
+		mat_wood_dark.albedo_color = Color(0.25, 0.15, 0.08)
+	
+	var mat_trim = SpatialMaterial.new()
+	mat_trim.albedo_color = Color(0.9, 0.9, 0.85)
+	
+	var mat_window = SpatialMaterial.new()
+	mat_window.albedo_color = Color(0.1, 0.15, 0.25)
+	mat_window.metallic = 0.9
+	mat_window.roughness = 0.1
+	
+	var mat_shutter = SpatialMaterial.new()
+	mat_shutter.albedo_color = Color(0.15, 0.25, 0.15) # Verde granja elegante
+	
+	# 1. CIMENTACIÓN (Base de piedra)
+	var base = MeshInstance.new()
+	base.mesh = CubeMesh.new()
+	base.mesh.size = Vector3(10.5, 0.8, 8.5)
+	base.translation = Vector3(0, 0.4, 0)
+	base.material_override = mat_base
+	house_node.add_child(base)
+	
+	# 2. CUERPO PRINCIPAL (Ajustado para evitar Z-fighting con el tejado)
+	var body = MeshInstance.new()
+	body.mesh = CubeMesh.new()
+	body.mesh.size = Vector3(10, 6.6, 8) # Aumentado de 6.5 a 6.6
+	body.translation = Vector3(0, 4.0, 0) # El tope queda en 7.3
+	body.material_override = mat_wall
+	body.cast_shadow = GeometryInstance.SHADOW_CASTING_SETTING_ON
+	house_node.add_child(body)
+	
+	# 3. MOLDURAS DE ESQUINA (Trim)
+	for x in [-5.05, 5.05]:
+		for z in [-4.05, 4.05]:
+			var trim = MeshInstance.new()
+			trim.mesh = CubeMesh.new()
+			trim.mesh.size = Vector3(0.4, 6.5, 0.4)
+			trim.translation = Vector3(x, 4.0, z)
+			trim.material_override = mat_trim
+			house_node.add_child(trim)
+			
+	# 4. TEJADO PRINCIPAL (Bajado ligeramente para solaparse y evitar Z-fighting)
+	var roof = MeshInstance.new()
+	var prism = PrismMesh.new()
+	prism.size = Vector3(11.5, 3.5, 9)
+	roof.mesh = prism
+	roof.translation = Vector3(0, 8.95, 0) # Bajado de 9.0 a 8.95. Base queda en 7.2
+	roof.material_override = mat_roof
+	roof.cast_shadow = GeometryInstance.SHADOW_CASTING_SETTING_ON
+	house_node.add_child(roof)
+	
+	# Bordes del tejado (Fascia)
+	var fascia_f = MeshInstance.new()
+	fascia_f.mesh = CubeMesh.new()
+	fascia_f.mesh.size = Vector3(11.6, 0.2, 0.2)
+	fascia_f.translation = Vector3(0, 7.3, 4.4)
+	fascia_f.material_override = mat_trim
+	house_node.add_child(fascia_f)
+	
+	# 5. PORCHE ELEGANTE
+	var porch_deck = MeshInstance.new()
+	porch_deck.mesh = CubeMesh.new()
+	porch_deck.mesh.size = Vector3(10, 0.3, 3.5)
+	porch_deck.translation = Vector3(0, 0.7, 5.75)
+	porch_deck.material_override = mat_wood_dark
+	house_node.add_child(porch_deck)
+	
+	# Escalones
+	for i in range(2):
+		var step = MeshInstance.new()
+		step.mesh = CubeMesh.new()
+		step.mesh.size = Vector3(3, 0.2, 0.4)
+		step.translation = Vector3(0, 0.5 - (i*0.25), 7.7 + (i*0.4))
+		step.material_override = mat_wood_dark
+		house_node.add_child(step)
+		
+	# Techo del Porche (Inclinado) - Subido a 4.1m para cubrir pilares
+	var p_roof = MeshInstance.new()
+	p_roof.mesh = CubeMesh.new()
+	p_roof.mesh.size = Vector3(11, 0.2, 4)
+	p_roof.translation = Vector3(0, 4.1, 5.8)
+	p_roof.rotation_degrees.x = 12
+	p_roof.material_override = mat_roof
+	house_node.add_child(p_roof)
+	
+	# Columnas del Porche (con base y capitel) - Acortadas aún más en la parte superior
+	for x in [-4.5, 4.5]:
+		var col = MeshInstance.new()
+		col.mesh = CubeMesh.new()
+		col.mesh.size = Vector3(0.3, 3.2, 0.3)
+		col.translation = Vector3(x, 2.15, 7.3)
+		col.material_override = mat_trim
+		house_node.add_child(col)
+		
+	# Barandilla del Porche
+	for x_side in [-1, 1]:
+		var rail = MeshInstance.new()
+		rail.mesh = CubeMesh.new()
+		rail.mesh.size = Vector3(3.5, 0.1, 0.1)
+		rail.translation = Vector3(x_side * 3.0, 1.8, 7.4)
+		rail.material_override = mat_trim
+		house_node.add_child(rail)
+		# Barrotillos (mini balusters)
+		for off in range(-15, 16, 5):
+			var b = MeshInstance.new()
+			b.mesh = CubeMesh.new()
+			b.mesh.size = Vector3(0.05, 1.0, 0.05)
+			b.translation = Vector3(x_side * 3.0 + (off*0.1), 1.3, 7.4)
+			b.material_override = mat_trim
+			house_node.add_child(b)
+
+	# 6. PUERTA PRINCIPAL (Con marco y pomo) - Tamaño ajustado
+	var door_frame = MeshInstance.new()
+	door_frame.mesh = CubeMesh.new()
+	door_frame.mesh.size = Vector3(2.0, 3.5, 0.2)
+	door_frame.translation = Vector3(0, 2.45, 4.01)
+	door_frame.material_override = mat_trim
+	house_node.add_child(door_frame)
+	
+	var door = MeshInstance.new()
+	door.mesh = CubeMesh.new()
+	door.mesh.size = Vector3(1.6, 3.2, 0.1)
+	door.translation = Vector3(0, 2.3, 4.05)
+	door.material_override = mat_wood_dark
+	house_node.add_child(door)
+	
+	var knob = MeshInstance.new()
+	var sph = SphereMesh.new()
+	sph.radius = 0.08; sph.height = 0.16
+	knob.mesh = sph
+	knob.translation = Vector3(0.5, 2.3, 4.15)
+	var gold = SpatialMaterial.new()
+	gold.albedo_color = Color(0.8, 0.6, 0.2); gold.metallic = 1.0; gold.roughness = 0.2
+	knob.material_override = gold
+	house_node.add_child(knob)
+
+	# 7. VENTANAS DETALLADAS (Corrección de vidrios y Atico circular)
+	var win_configs = [
+		{"pos": Vector3(-2.8, 5.8, 4.1), "rot": 0, "shutters": true, "w": 1.6, "h": 2.0},
+		{"pos": Vector3(2.8, 5.8, 4.1), "rot": 0, "shutters": true, "w": 1.6, "h": 2.0},
+		{"pos": Vector3(-5.1, 4.8, 0.0), "rot": 90, "shutters": true, "w": 1.6, "h": 2.0},
+		{"pos": Vector3(5.1, 4.8, 0.0), "rot": -90, "shutters": true, "w": 1.6, "h": 2.0}, # Rotación corregida
+		{"pos": Vector3(0, 8.2, 4.6), "rot": 0, "shutters": false, "w": 1.1, "h": 1.1, "round": true} # Atico corregido offset
+	]
+	
+	for cfg in win_configs:
+		var w_node = Spatial.new()
+		w_node.translation = cfg.pos
+		w_node.rotation_degrees.y = cfg.rot
+		house_node.add_child(w_node)
+		
+		var is_round = cfg.get("round", false)
+		var ww = cfg.w
+		var wh = cfg.h
+		
+		# Cristal
+		var glass = MeshInstance.new()
+		if is_round:
+			var cyl = CylinderMesh.new()
+			cyl.top_radius = ww * 0.5; cyl.bottom_radius = ww * 0.5; cyl.height = 0.05
+			glass.mesh = cyl
+			glass.rotation_degrees.x = 90
+		else:
+			glass.mesh = CubeMesh.new()
+			glass.mesh.size = Vector3(ww, wh, 0.05)
+		glass.material_override = mat_window
+		w_node.add_child(glass)
+		
+		# Marco de la ventana
+		var frame = MeshInstance.new()
+		if is_round:
+			var f_cyl = CylinderMesh.new()
+			f_cyl.top_radius = ww * 0.55; f_cyl.bottom_radius = ww * 0.55; f_cyl.height = 0.1
+			frame.mesh = f_cyl
+			frame.rotation_degrees.x = 90
+			frame.translation.z = -0.04
+		else:
+			frame.mesh = CubeMesh.new()
+			frame.mesh.size = Vector3(ww + 0.2, wh + 0.2, 0.1)
+			frame.translation.z = -0.04
+		frame.material_override = mat_trim
+		w_node.add_child(frame)
+		
+		# Cruceta (+)
+		var cross_h = MeshInstance.new()
+		cross_h.mesh = CubeMesh.new(); cross_h.mesh.size = Vector3(ww, 0.08, 0.1)
+		cross_h.material_override = mat_trim
+		w_node.add_child(cross_h)
+		
+		var cross_v = MeshInstance.new()
+		cross_v.mesh = CubeMesh.new(); cross_v.mesh.size = Vector3(0.08, wh, 0.1)
+		cross_v.material_override = mat_trim
+		w_node.add_child(cross_v)
+		
+		if cfg.shutters:
+			for side in [-1, 1]:
+				var shutter = MeshInstance.new()
+				shutter.mesh = CubeMesh.new()
+				shutter.mesh.size = Vector3(0.8, wh, 0.05)
+				shutter.translation = Vector3(side * (ww*0.5 + 0.5), 0, 0)
+				shutter.material_override = mat_shutter
+				w_node.add_child(shutter)
+
+	# 8. CHIMENEA TRABAJADA
+	var chimney = MeshInstance.new()
+	chimney.mesh = CubeMesh.new()
+	chimney.mesh.size = Vector3(1.4, 6, 1.4)
+	chimney.translation = Vector3(3.5, 9, -2)
+	chimney.material_override = mat_base # Estilo piedra
+	house_node.add_child(chimney)
+	
+	var chim_top = MeshInstance.new()
+	chim_top.mesh = CubeMesh.new()
+	chim_top.mesh.size = Vector3(1.6, 0.3, 1.6)
+	chim_top.translation = Vector3(3.5, 12, -2)
+	chim_top.material_override = mat_trim
+	house_node.add_child(chim_top)
+
+	# --- COLISIONES ---
+	_add_house_collision(house_node)
+
+func _add_house_collision(house_node):
+	var sb = StaticBody.new()
+	house_node.add_child(sb)
+	
+	# Cuerpo (incluyendo base)
+	var cs_body = CollisionShape.new()
+	var shape_body = BoxShape.new()
+	shape_body.extents = Vector3(5, 4, 4)
+	cs_body.shape = shape_body
+	cs_body.translation = Vector3(0, 4, 0)
+	sb.add_child(cs_body)
+	
+	# Porche
+	var cs_porch = CollisionShape.new()
+	var shape_porch = BoxShape.new()
+	shape_porch.extents = Vector3(5, 0.4, 1.75)
+	cs_porch.shape = shape_porch
+	cs_porch.translation = Vector3(0, 0.7, 5.75)
+	sb.add_child(cs_porch)
+	
+	# Tejado (simplificado con otra caja o cuña si se prefiere, aquí caja alta)
+	var cs_roof = CollisionShape.new()
+	var shape_roof = BoxShape.new()
+	shape_roof.extents = Vector3(5.5, 1.5, 4.5)
+	cs_roof.shape = shape_roof
+	cs_roof.translation = Vector3(0, 8.5, 0)
+	sb.add_child(cs_roof)
+
+func _add_stable(container, shared_res):
+	var stable_node = Spatial.new()
+	# Ubicación: Esquina opuesta a la casa (18, 18)
+	stable_node.translation = Vector3(18.0, 2.0, 18.0)
+	stable_node.rotation_degrees.y = 225.0
+	container.add_child(stable_node)
+	
+	var mat_wood = shared_res.get("wood_mat")
+	var mat_roof = SpatialMaterial.new()
+	mat_roof.albedo_color = Color(0.35, 0.2, 0.15) # Tejo más rústico
+	mat_roof.roughness = 0.8
+	
+	# 1. POSTES PRINCIPALES (Estructura abierta)
+	var post_mesh = CubeMesh.new()
+	post_mesh.size = Vector3(0.5, 5, 0.5)
+	
+	var posts_pos = [
+		Vector3(-5, 2.5, -4), Vector3(5, 2.5, -4),
+		Vector3(-5, 2.5, 4), Vector3(5, 2.5, 4),
+		Vector3(0, 2.5, -4)
+	]
+	
+	for p_pos in posts_pos:
+		var p = MeshInstance.new()
+		p.mesh = post_mesh
+		p.translation = p_pos
+		p.material_override = mat_wood
+		stable_node.add_child(p)
+		
+	# 2. TECHO (Gran cobertizo)
+	var roof = MeshInstance.new()
+	var prism = PrismMesh.new()
+	prism.size = Vector3(12, 3, 10)
+	roof.mesh = prism
+	roof.translation = Vector3(0, 6.5, 0)
+	roof.material_override = mat_roof
+	stable_node.add_child(roof)
+	
+	# 3. BARANDAS BAJAS (Tranqueras laterales)
+	var rail_mesh = CubeMesh.new()
+	rail_mesh.size = Vector3(5, 0.2, 0.2)
+	
+	var rails_configs = [
+		# Lateral Izquierdo
+		{"pos": Vector3(-5, 0.8, 0), "rot": 90, "size": Vector3(8, 0.2, 0.2)},
+		{"pos": Vector3(-5, 1.8, 0), "rot": 90, "size": Vector3(8, 0.2, 0.2)},
+		# Trasera
+		{"pos": Vector3(0, 0.8, -4), "rot": 0, "size": Vector3(10, 0.2, 0.2)},
+		{"pos": Vector3(0, 1.8, -4), "rot": 0, "size": Vector3(10, 0.2, 0.2)},
+		# Lateral Derecho
+		{"pos": Vector3(5, 0.8, 0), "rot": 90, "size": Vector3(8, 0.2, 0.2)},
+		{"pos": Vector3(5, 1.8, 0), "rot": 90, "size": Vector3(8, 0.2, 0.2)}
+	]
+	
+	for r_cfg in rails_configs:
+		var r = MeshInstance.new()
+		r.mesh = CubeMesh.new()
+		r.mesh.size = r_cfg.size
+		r.translation = r_cfg.pos
+		r.rotation_degrees.y = r_cfg.rot
+		r.material_override = mat_wood
+		stable_node.add_child(r)
+		
+	# 4. COMEDERO DIVIDIDO (2 compartimentos)
+	var mat_trough = SpatialMaterial.new()
+	mat_trough.albedo_color = Color(0.2, 0.15, 0.1)
+	
+	var mat_hay = SpatialMaterial.new()
+	mat_hay.albedo_color = Color(0.8, 0.7, 0.2)
+	
+	for side in [-1, 1]:
+		var trough = MeshInstance.new()
+		trough.mesh = CubeMesh.new()
+		trough.mesh.size = Vector3(3.5, 0.8, 1.2)
+		trough.translation = Vector3(side * 2.2, 0.4, -3.2)
+		trough.material_override = mat_trough
+		stable_node.add_child(trough)
+		
+		# Paja
+		var hay = MeshInstance.new()
+		hay.mesh = CubeMesh.new()
+		hay.mesh.size = Vector3(3.3, 0.2, 1.0)
+		hay.translation = Vector3(side * 2.2, 0.85, -3.2)
+		hay.material_override = mat_hay
+		stable_node.add_child(hay)
+		
+	# Divisor central
+	var divider = MeshInstance.new()
+	divider.mesh = CubeMesh.new()
+	divider.mesh.size = Vector3(0.5, 1.2, 1.4)
+	divider.translation = Vector3(0, 0.6, -3.2)
+	divider.material_override = mat_wood
+	stable_node.add_child(divider)
+
+	# 5. COLISIONES DEL ESTABLO
+	_add_stable_collision(stable_node)
+
+func _add_stable_collision(stable_node):
+	var sb = StaticBody.new()
+	stable_node.add_child(sb)
+	
+	# Colisiones de los 3 lados cerrados por barandas
+	var col_configs = [
+		{"pos": Vector3(-5, 1.5, 0), "size": Vector3(0.5, 3.0, 8)}, # Izq
+		{"pos": Vector3(5, 1.5, 0), "size": Vector3(0.5, 3.0, 8)},  # Der
+		{"pos": Vector3(0, 1.5, -4), "size": Vector3(10, 3.0, 0.5)} # Tras
+	]
+	
+	for c in col_configs:
+		var cs = CollisionShape.new()
+		var shape = BoxShape.new()
+		shape.extents = c.size * 0.5
+		cs.shape = shape
+		cs.translation = c.pos
+		sb.add_child(cs)
+	
+	# Colisión del comedero dividido
+	for side in [-1, 1]:
+		var cs_t = CollisionShape.new()
+		var shape_t = BoxShape.new()
+		shape_t.extents = Vector3(1.75, 0.4, 0.6)
+		cs_t.shape = shape_t
+		cs_t.translation = Vector3(side * 2.2, 0.4, -3.2)
+		sb.add_child(cs_t)
+	
+	var cs_div = CollisionShape.new()
+	var shape_div = BoxShape.new()
+	shape_div.extents = Vector3(0.25, 0.6, 0.7)
+	cs_div.shape = shape_div
+	cs_div.translation = Vector3(0, 0.6, -3.2)
+	sb.add_child(cs_div)
+
 func _add_fence_collisions(container):
 	var half = 33.0
 	var height = 3.0
@@ -293,7 +704,6 @@ func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn, grid_res = G
 		fixed_noise.seed = 1337
 		fixed_noise.period = 60.0 # Match consistency
 	
-	var verts = []
 	var world_manager = get_parent()
 	
 	for z in range(grid_res + 1):
@@ -508,16 +918,15 @@ func _add_decos_final(deco_container, shared_res, is_spawn):
 				tf.origin = Vector3(lx, y_h + 1.3, lz)
 				cactus_instances.append(tf)
 
-	# Aplicar MultiMeshes de forma escalonada para evitar lag
 	if tree_instances.size() > 0:
 		yield(get_tree(), "idle_frame")
 		if not is_instance_valid(self): return
-		_apply_mmi_final(deco_container, shared_res["tree_parts"], tree_instances)
+		_apply_mmi_final(deco_container, shared_res["tree_parts"], tree_instances, "tree_mmi")
 		
 	if cactus_instances.size() > 0:
 		yield(get_tree(), "idle_frame")
 		if not is_instance_valid(self): return
-		_apply_mmi_final(deco_container, shared_res["cactus_parts"], cactus_instances)
+		_apply_mmi_final(deco_container, shared_res["cactus_parts"], cactus_instances, "cactus_mmi")
 	
 	# AGREGAR ANIMALES (Escalonado)
 	_add_animals(deco_container, shared_res)
@@ -537,7 +946,7 @@ func _add_animals(container, shared_res):
 			var cow_scene = shared_res["cow_scene"]
 			if cow_scene:
 				var count = randi() % 2 + 1 # Grupos más pequeños (1-2 en lugar de 2-4)
-				for i in range(count):
+				for _i in range(count):
 					yield(get_tree(), "idle_frame")
 					if not is_instance_valid(self): return
 					var cow = cow_scene.instance()
@@ -552,7 +961,7 @@ func _add_animals(container, shared_res):
 			var goat_scene = shared_res["goat_scene"]
 			if goat_scene:
 				var count = randi() % 2 + 1 # Reducido de 3+1
-				for i in range(count):
+				for _i in range(count):
 					yield(get_tree(), "idle_frame")
 					if not is_instance_valid(self): return
 					var goat = goat_scene.instance()
@@ -562,18 +971,35 @@ func _add_animals(container, shared_res):
 					goat.translation = pos + Vector3(0, shared_res["height_noise"].get_noise_2d(gx, gz) * shared_res["H_SNOW"] + 0.5, 0)
 					container.add_child(goat)
 
-func _apply_mmi_final(container, parts, instances):
+func mark_instance_as_harvested(group_name, index):
+	if not harvested_instances.has(group_name):
+		harvested_instances[group_name] = []
+	if not index in harvested_instances[group_name]:
+		harvested_instances[group_name].append(index)
+
+func _apply_mmi_final(container, parts, instances, group_name = ""):
 	if instances.size() == 0: return
+	
+	# Verificar qué instancias de este grupo ya han sido cosechadas
+	var dead_list = []
+	if group_name != "" and harvested_instances.has(group_name):
+		dead_list = harvested_instances[group_name]
+	
 	for part in parts:
 		var mmi = MultiMeshInstance.new()
+		if group_name != "":
+			mmi.add_to_group(group_name)
 		var mm = MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.mesh = part.mesh
 		mm.instance_count = instances.size()
 		for i in range(instances.size()):
-			mm.set_instance_transform(i, instances[i])
+			var tf = instances[i]
+			# Si esta instancia fue talada, la hacemos invisible (Escala 0)
+			if i in dead_list:
+				tf = tf.scaled(Vector3.ZERO)
+			mm.set_instance_transform(i, tf)
 		mmi.multimesh = mm
 		if part.mat: mmi.material_override = part.mat
-		# Sombras activadas para vegetación (árboles y cactus)
 		mmi.cast_shadow = GeometryInstance.SHADOW_CASTING_SETTING_ON
 		container.add_child(mmi)

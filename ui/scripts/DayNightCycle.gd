@@ -59,8 +59,8 @@ func _process(delta):
 	if cached_camera:
 		global_transform.origin = cached_camera.global_transform.origin
 	
-	# Estrellas (Solo si el nodo existe y está visible de noche)
-	if stars_sphere and time_of_day < 0.25 or time_of_day > 0.75:
+	# 3. Cielo Dinámico y Estrellas (Actualizar siempre para evitar "congelamiento" de luz)
+	if stars_sphere:
 		var mat = stars_sphere.get_surface_material(0)
 		if mat:
 			mat.set_shader_param("time_of_day", time_of_day)

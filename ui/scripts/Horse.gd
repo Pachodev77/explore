@@ -105,23 +105,7 @@ func _physics_process(delta):
 		velocity.y = 0
 	
 	# --- MOVIMIENTO Y SALTO ---
-	match current_jump_state:
-		JumpState.ANTICIPATION:
-			jump_timer += effective_delta
-			if jump_timer > 0.12:
-				velocity.y = jump_force
-				current_jump_state = JumpState.IN_AIR
-				jump_timer = 0.0
-		JumpState.IN_AIR:
-			jump_timer += effective_delta
-			if is_on_floor() and velocity.y <= 0:
-				current_jump_state = JumpState.IMPACT
-				jump_timer = 0.0
-		JumpState.IMPACT:
-			jump_timer += effective_delta
-			if jump_timer > 0.3:
-				current_jump_state = JumpState.IDLE
-				jump_timer = 0.0
+	# (Lógica de estados movida después de move_and_slide para mayor precisión)
 	
 	if is_ridden and rider:
 		_process_ridden_movement(effective_delta)
@@ -136,6 +120,28 @@ func _physics_process(delta):
 			snap = -get_floor_normal() * 0.4
 	
 	velocity = move_and_slide_with_snap(velocity, snap, Vector3.UP, true, 4, deg2rad(70))
+	
+	# --- GESTOR DE ESTADOS DE SALTO (POST-MOVIMIENTO) ---
+	match current_jump_state:
+		JumpState.ANTICIPATION:
+			jump_timer += effective_delta
+			if jump_timer > 0.12:
+				velocity.y = jump_force
+				current_jump_state = JumpState.IN_AIR
+				jump_timer = 0.0
+		JumpState.IN_AIR:
+			jump_timer += effective_delta
+			# Detección ultra-sensible de suelo
+			if is_on_floor():
+				current_jump_state = JumpState.IMPACT
+				jump_timer = 0.0
+		JumpState.IMPACT:
+			jump_timer += effective_delta
+			# Si nos movemos rápido, salimos antes del impacto para no perder flow
+			var speed_exit = 0.15 if Vector3(velocity.x, 0, velocity.z).length() > speed * 0.8 else 0.3
+			if jump_timer > speed_exit:
+				current_jump_state = JumpState.IDLE
+				jump_timer = 0.0
 	
 	_update_smoothed_parameters(effective_delta)
 	_update_eating_weight(effective_delta)
@@ -184,7 +190,12 @@ func _animate_gallop(p):
 	var off_sprint = {"bl": 0.0, "br": 0.15, "fl": 0.5, "fr": 0.65}
 	
 	# Nueva variable para detener el ciclo de las patas durante el salto
-	var cycle_weight = 1.0 if current_jump_state == JumpState.IDLE else 0.0
+	# Mezclar ciclo de patas: 0 en aire, progresa a 1 en impacto/idle
+	var cycle_weight = 0.0
+	if current_jump_state == JumpState.IDLE:
+		cycle_weight = 1.0
+	elif current_jump_state == JumpState.IMPACT:
+		cycle_weight = clamp(anim_phase * 2.0, 0.2, 1.0) # Permitir movimiento parcial en impacto
 	
 	for leg in ["fl", "fr", "bl", "br"]:
 		if not ("leg_"+leg in p_nodes) or not ("joint_"+leg in p_nodes): continue
@@ -256,12 +267,16 @@ func _animate_gallop(p):
 			p_nodes.head.rotation.x = eating_weight * deg2rad(35.0)
 		
 	if "tail" in p_nodes:
-		var tail_lift = lerp(0.3, 0.8, gait_lerp)
+		var tail_lift = lerp(0.5, -0.3, gait_lerp) # 0.5 en reposo, -0.3 (un poco más elevada) al correr
 		var tail_swing_speed = lerp(1.5, 3.0, gait_lerp)
 		# Mover la cola suavemente al estar quieto (espantar moscas)
 		var idle_flick = (1.0 - speed_ratio) * sin(OS.get_ticks_msec() * 0.003) * 0.2
-		p_nodes.tail.rotation.x = tail_lift + (sin(p * TAU * tail_swing_speed) * 0.2 * speed_ratio)
-		p_nodes.tail.rotation.z = (sin(p * TAU * 1.5) * 0.15 * speed_ratio * (1.0 + gait_lerp)) + idle_flick
+		
+		# Amplitud muy reducida al correr para que sea casi estática (0.01)
+		var swing_amp = lerp(0.05, 0.01, gait_lerp) * speed_ratio
+		
+		p_nodes.tail.rotation.x = tail_lift + (sin(p * TAU * tail_swing_speed) * swing_amp)
+		p_nodes.tail.rotation.z = (sin(p * TAU * 1.5) * swing_amp * 1.5) + idle_flick
 
 func _process_ridden_movement(delta):
 	var move_dir = Vector3.ZERO

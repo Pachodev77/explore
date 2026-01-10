@@ -93,14 +93,18 @@ func _physics_process(delta):
 		velocity.x = target_dir.x * current_speed
 		velocity.z = target_dir.z * current_speed
 	else:
-		velocity.x = lerp(velocity.x, 0, 5 * ed)
-		velocity.z = lerp(velocity.z, 0, 5 * ed)
+		if is_eating:
+			velocity.x = 0
+			velocity.z = 0
+		else:
+			velocity.x = lerp(velocity.x, 0, 5 * ed)
+			velocity.z = lerp(velocity.z, 0, 5 * ed)
 
 	velocity = move_and_slide(velocity, Vector3.UP)
 	
 	# Mezclar peso de animación de comer
-	var target_eat_w = 1.0 if (is_eating and Vector3(velocity.x,0,velocity.z).length() < 0.1) else 0.0
-	eating_weight = lerp(eating_weight, target_eat_w, 2.5 * delta)
+	var target_eat_w = 1.0 if (is_eating and Vector3(velocity.x,0,velocity.z).length() < 0.3) else 0.0
+	eating_weight = lerp(eating_weight, target_eat_w, 2.5 * ed)
 	
 	_update_animation(ed)
 
@@ -121,6 +125,10 @@ func _animate_goat(p):
 	var h_speed = Vector3(velocity.x, 0, velocity.z).length()
 	var s_ratio = clamp(h_speed / speed, 0.0, 1.0)
 	if not is_on_floor(): s_ratio = 1.0
+	
+	# FIX: Evitar temblor en patas al comer
+	if is_eating or eating_weight > 0.1:
+		s_ratio = 0.0
 	
 	# Cuerpo saltarín
 	var bounce = abs(sin(p)) * 0.1 * s_ratio
@@ -148,8 +156,8 @@ func _animate_goat(p):
 		p_nodes.head.rotation.y = look_anim
 		
 		if "neck_base" in p_nodes:
-			# Las cabras bajan el cuello en ángulo pronunciado
-			var eat_pose = -eating_weight * deg2rad(90.0)
+			# Las cabras bajan el cuello en ángulo pronunciado (Más profundo)
+			var eat_pose = -eating_weight * deg2rad(120.0)
 			p_nodes.neck_base.rotation.x = eat_pose
-			# Cabeza extendida para comer entre rocas/pasto
-			p_nodes.head.rotation.x = eating_weight * deg2rad(30.0)
+			# Cabeza compensada hacia arriba
+			p_nodes.head.rotation.x = eating_weight * deg2rad(70.0)

@@ -120,14 +120,25 @@ func _ready():
 		# Vaca 1
 		var cow1 = cow_scene.instance()
 		add_child(cow1)
+		cow1.speed = 4.0 # Un poco más rápido para asegurar que lleguen
 		cow1.global_transform.origin = Vector3(15, 5, -15)
-		print("DEBUG: Vaca 1 SPAWNED en global ", cow1.global_transform.origin)
+		cow1.is_night_cow = true
+		# Waypoints separados para no chocar en la entrada
+		cow1.night_waypoint_pos = Vector3(11.8, 2.1, 13.0) 
+		# Target: Compartimento Izquierdo (X local -2.5). Global calc: (22.0, 2, 18.5)
+		cow1.night_target_pos = Vector3(22.0, 2.1, 18.5)
+		print("DEBUG: Vaca 1 SPAWNED -> Target IZQUIERDO")
 		
 		# Vaca 2
 		var cow2 = cow_scene.instance()
 		add_child(cow2)
+		cow2.speed = 4.0
 		cow2.global_transform.origin = Vector3(-15, 5, 15)
-		print("DEBUG: Vaca 2 SPAWNED en global ", cow2.global_transform.origin)
+		cow2.is_night_cow = true
+		cow2.night_waypoint_pos = Vector3(13.0, 2.1, 11.8)
+		# Target: Compartimento Derecho (X local +2.5). Global calc: (18.5, 2, 22.0)
+		cow2.night_target_pos = Vector3(18.5, 2.1, 22.0)
+		print("DEBUG: Vaca 2 SPAWNED -> Target DERECHO")
 		
 	var goat_scene = load("res://ui/scenes/Goat.tscn")
 	if goat_scene:
@@ -152,11 +163,6 @@ func update_tiles():
 	var x_int = int(player_coords.x)
 	var z_int = int(player_coords.y)
 	
-	for x in range(x_int - render_distance, x_int + render_distance + 1):
-		for z in range(z_int - render_distance, z_int + player_coords.y + 1):
-			# FIX: range stop for z was using z_int which is correct, 
-			# but I noticed a potential typo in my thought, let me re-write it correctly.
-			pass
 
 	# Clean re-implementation of update_tiles loop
 	for x in range(x_int - render_distance, x_int + render_distance + 1):
@@ -325,7 +331,6 @@ func get_road_influence(gx, gz):
 	
 	# Detectar si estamos en el borde para los árboles
 	var is_on_edge = false
-	var edge_side = 0 # -1 o 1
 	var tree_edge_dist = 14.5 # Justo en el borde de la carretera
 	if abs(min_d - tree_edge_dist) < 1.5:
 		is_on_edge = true

@@ -97,23 +97,31 @@ func _setup_materials():
 		"Hands": ["HandL", "HandR"]
 	}
 	
+	var f = File.new()
 	for group_name in part_groups.keys():
-		var mat = ShaderMaterial.new()
-		mat.shader = load("res://ui/shaders/realistic_skin.shader")
-		
-		# Intentar cargar textura, si no crear una blanca por defecto
 		var tex_path = "res://assets/textures/player/" + group_name.to_lower() + ".png"
-		var tex = load(tex_path)
-		if not tex:
-			tex = _create_white_placeholder()
-			
-		mat.set_shader_param("skin_color", Color(1, 1, 1)) # Usar blanco para que mande la textura
-		mat.set_shader_param("albedo_texture", tex)
-		mat.set_shader_param("roughness", 0.4)
-		mat.set_shader_param("sss_strength", 0.3)
-		mat.set_shader_param("detail_scale", 50.0)
+		var tex = null
+		if f.file_exists(tex_path):
+			tex = load(tex_path)
 		
-		body_materials[group_name] = mat
+		if not tex: 
+			tex = _create_white_placeholder()
+
+		if OS.has_feature("Android") or OS.has_feature("iOS"):
+			var mat = SpatialMaterial.new()
+			mat.albedo_texture = tex
+			mat.roughness = 0.85
+			mat.metallic = 0.0
+			# OPTIMIZACIÓN MÓVIL: Evitar que se proyecte sombra sobre sí mismo
+			mat.flags_do_not_receive_shadows = true
+			body_materials[group_name] = mat
+		else:
+			var mat = ShaderMaterial.new()
+			mat.shader = load("res://ui/shaders/realistic_skin.shader")
+			mat.set_shader_param("skin_color", Color(1, 1, 1))
+			mat.set_shader_param("albedo_texture", tex)
+			mat.set_shader_param("roughness", 0.85)
+			body_materials[group_name] = mat
 
 func _create_white_placeholder():
 	var img = Image.new()
@@ -224,8 +232,8 @@ func _generate_skinned_mesh():
 		groups["Feet"].append(["Foot"+side, Vector3(0.11*sm, 0.036, 0.1), Vector3(0.09, 0.12, 0.18)])
 
 	var sphere = SphereMesh.new()
-	sphere.radial_segments = 24 # Reducido de 64 para performance
-	sphere.rings = 16 # Reducido de 48 para performance
+	sphere.radial_segments = 32 # Suavizado para evitar faceteado
+	sphere.rings = 24
 	var sphere_arrays = sphere.get_mesh_arrays()
 	
 	for group_name in groups.keys():
@@ -255,84 +263,56 @@ func _generate_skinned_mesh():
 			var is_lower_leg = b_name.begins_with("LowerLeg")
 			
 			for i in range(p_verts.size()):
-				var v_orig = p_verts[i] # La esfera unitaria (-1 a 1)
+				var v_orig = p_verts[i]
 				var v = v_orig
 				
-				# 1. DEFORMACIÓN ANATÓMICA (CABEZA HUMANA)
+				# 1. DEFORMACIONES ANATÓMICAS
 				if is_head:
-					# Tapering Anatómico Pro:
-					# - Cráneo (Y > 0): Domo con aplanamiento temporal (lados)
-					# - Mandíbula (Y < 0): Estrechamiento hacia el mentón
 					var taper = 1.0
 					if v_orig.y < 0:
 						taper = lerp(0.52, 1.0, (v_orig.y + 1.0) / 1.0)
 					else:
-						# Aplanar arriba (Coronilla) - Extremo (v.y * 0.7)
-						if v_orig.y > 0.6:
-							v.y *= 0.7
+						if v_orig.y > 0.6: v.y *= 0.7
 						taper = lerp(1.0, 0.82, pow(v_orig.y, 2))
-					
 					v.x *= taper
-					# Aplanamiento temporal sutil
 					v.x *= (1.0 - abs(v_orig.x) * 0.05)
-					
-					# Nuca (Z-) plana y cara (Z+) normal - Extremo (v.z * 0.7)
 					if v_orig.z < 0:
-						v.z *= 0.7 # Aplanar atrás (antes 0.80)
+						v.z *= 0.7
 						v.x *= 1.02 
 					else:
-						v.z *= 1.02 # Cara
-						# v.x permanece normal adelante
+						v.z *= 1.02
 				
-				# 1.5 DEFORMACIÓN DE ESPALDA, PECHO Y CADERA (APLANAR)
 				if b_name == "Spine" or b_name == "Spine2":
-					if v_orig.z < 0:
-						# Espalda más plana
-						v.z *= 0.65
-					elif b_name == "Spine2" and v_orig.z > 0:
-						# Pecho un poco más plano
-						v.z *= 0.82
+					if v_orig.z < 0: v.z *= 0.65
+					elif b_name == "Spine2" and v_orig.z > 0: v.z *= 0.82
 				elif b_name == "Hips":
-					# Aplanar cadera adelante y atrás para que sea menos bulbosa
 					v.z *= 0.72
-					# Aplanar lados de la cadera (NUEVO)
 					v.x *= 0.85
 				
-				# 1.6 DEFORMACIÓN DE PANTORRILLAS (TAPERING EXTREMO)
-				# Esto reduce el grosor del tobillo para que la bota/pie se vea mejor
 				if is_lower_leg:
 					var taper = 1.0
 					if v_orig.y < 0:
-						# Taper agresivo hacia el tobillo: de 1.0 (medio) a 0.3 (tobillo)
-						var t = (v_orig.y + 1.0) / 1.0
-						taper = lerp(0.3, 1.0, t) # 30% en el punto más bajo
+						taper = lerp(0.3, 1.0, (v_orig.y + 1.0) / 1.0)
 					else:
-						# Ensanchar hacia la rodilla (punto superior del LowerLeg)
-						# Esto le da un aspecto más atlético y natural.
-						taper = lerp(1.0, 1.15, v_orig.y) # 115% de ancho arriba
-					
+						taper = lerp(1.0, 1.15, v_orig.y)
 					v.x *= taper
-					v.z *= taper
-					
-					if i == 0:
-						print("DEBUG: Modificando PANTORRILLA ", b_name, " con taper ", taper)
+					v.x *= taper
 				
 				# 2. ESCALADO
 				v.x *= size.x; v.y *= size.y; v.z *= size.z
 				
-				# 3. CÁLCULO DE NORMAL DE ELIPSOIDE CORRECTA
-				# La normal de un elipsoide (x/a)^2 + (y/b)^2 + (z/c)^2 = 1 es (x/a^2, y/b^2, z/c^2)
-				var n = Vector3(v_orig.x / size.x, v_orig.y / size.y, v_orig.z / size.z).normalized()
+				# 3. NORMAL DE ELIPSOIDE
+				var n = Vector3(v_orig.x / (size.x*size.x), v_orig.y / (size.y*size.y), v_orig.z / (size.z*size.z)).normalized()
 				
-				# 4. NORMAL BENDING (DOBLADO DE NORMALES EN LOS POLOS)
-				# Esto suaviza la iluminación en las juntas donde las piezas se cortan o intersecan
-				var pole_factor = abs(v_orig.y) # 0 en ecuador, 1 en polos
-				if pole_factor > 0.7:
-					var blend = (pole_factor - 0.7) / 0.3
+				# 4. NORMAL BENDING (MÁS FUERTE)
+				# Esto hace que las piezas parezcan una sola pieza de goma al iluminarse
+				var pole_factor = abs(v_orig.y)
+				if pole_factor > 0.6:
+					var blend = (pole_factor - 0.6) / 0.4
 					var target_n = Vector3(0, 1.0 if v_orig.y > 0 else -1.0, 0)
-					n = n.linear_interpolate(target_n, blend * 0.8).normalized()
+					n = n.linear_interpolate(target_n, blend * 0.95).normalized()
 				
-				# 5. APLANAR LA SUELA (SOLO PIES)
+				# 5. APLANAR LA SUELA
 				if is_foot and v.y < -size.y * 0.3:
 					v.y = -size.y * 0.3
 					n = Vector3(0, -1, 0)

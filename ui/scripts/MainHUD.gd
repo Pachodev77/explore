@@ -7,10 +7,18 @@ signal mount_pressed()
 signal run_pressed(is_active)
 signal jump_pressed()
 signal torch_pressed()
+signal action_pressed()
 
 func set_mount_visible(is_visible):
 	if buttons.has("mount"):
 		buttons["mount"].visible = is_visible
+
+func set_action_label(new_text):
+	if buttons.has("map"):
+		for child in buttons["map"].get_children():
+			if child is Label:
+				child.text = new_text
+				break
 
 # Joysticks (Ahora en contenedores flotantes sin panel)
 onready var left_joy = $MoveJoystickContainer/JoystickWell/Handle
@@ -52,6 +60,8 @@ onready var sidebar_buttons = {
 	"settings": $Sidebar/Settings
 }
 
+var notify_container : VBoxContainer
+
 func _ready():
 	# Crear Tween reutilizable
 	button_tween = Tween.new()
@@ -89,6 +99,22 @@ func _ready():
 	# Buscar panel de configuración si existe en la raíz
 	settings_panel = get_tree().root.find_node("SettingsPanel", true, false)
 	
+	# 1. Crear contenedor de notificaciones (Arriba Centrado)
+	notify_container = VBoxContainer.new()
+	notify_container.name = "NotificationContainer"
+	notify_container.set_anchors_and_margins_preset(Control.PRESET_CENTER_TOP)
+	notify_container.margin_top = 20 # Un poco de espacio desde el borde superior
+	notify_container.margin_left = -115 # Centrado con desplazamiento acumulado a la derecha
+	notify_container.margin_right = 185
+	notify_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	notify_container.add_constant_override("separation", 8)
+	add_child(notify_container)
+	
+	# 2. Conectar al sistema de inventario real
+	var inv = get_node_or_null("/root/InventoryManager")
+	if inv:
+		inv.connect("item_added", self, "_on_item_added")
+	
 	# Forzar escalado de moneda
 	$Header/Currency/Diamonds/H/Icon.rect_min_size = Vector2(36, 36)
 	$Header/Currency/Gold/H/Icon.rect_min_size = Vector2(32, 32)
@@ -106,6 +132,14 @@ func _ready():
 		if close_btn:
 			close_btn.connect("pressed", self, "_on_map_close")
 	
+	# Instanciar InventoryPanel
+	var inv_scene = load("res://ui/scenes/InventoryPanel.tscn")
+	if inv_scene:
+		var inv_panel = inv_scene.instance()
+		inv_panel.name = "InventoryPanel"
+		inv_panel.visible = false
+		add_child(inv_panel)
+	
 	_style_buttons()
 	
 	# Etiqueta para el botón de antorcha
@@ -117,6 +151,16 @@ func _ready():
 		label.mouse_filter = Control.MOUSE_FILTER_IGNORE # CRÍTICO: No bloquear clics
 		label.set_anchors_and_margins_preset(Control.PRESET_WIDE)
 		buttons["torch"].add_child(label)
+	
+	# Etiqueta para el botón de ACCIÓN (antiguo botón de mapa)
+	if buttons.has("map"):
+		var label = Label.new()
+		label.text = "ACTION"
+		label.align = Label.ALIGN_CENTER
+		label.valign = Label.VALIGN_CENTER
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		label.set_anchors_and_margins_preset(Control.PRESET_WIDE)
+		buttons["map"].add_child(label)
 	
 	# FIX Z-ORDER: Sidebar debe estar ENCIMA de los joysticks para recibir input
 	$Sidebar.raise()
@@ -250,8 +294,8 @@ func _on_button_input(event, btn_name):
 				print("DEBUG: Emitiendo torch_pressed")
 				emit_signal("torch_pressed")
 			elif btn_name == "map":
-				var map_panel = get_node_or_null("MapPanel")
-				if map_panel: map_panel.visible = !map_panel.visible
+				# Ahora funciona como botón de Acción
+				emit_signal("action_pressed")
 			elif btn_name == "mount":
 				emit_signal("mount_pressed")
 			elif btn_name == "jump":
@@ -278,7 +322,12 @@ func _on_sidebar_button_input(event, btn_name):
 			if btn: animate_button_press(btn)
 			
 			# Lógica de paneles
-			if btn_name == "map_sidebar":
+			if btn_name == "backpack":
+				var inv_panel = get_node_or_null("InventoryPanel")
+				if inv_panel:
+					inv_panel.visible = !inv_panel.visible
+					if inv_panel.visible: inv_panel.raise()
+			elif btn_name == "map_sidebar":
 				var map_panel = get_node_or_null("MapPanel")
 				if map_panel: map_panel.visible = !map_panel.visible
 			elif btn_name == "settings":
@@ -287,6 +336,11 @@ func _on_sidebar_button_input(event, btn_name):
 				if settings_panel:
 					settings_panel.visible = !settings_panel.visible
 					settings_panel.raise()
+			elif btn_name == "backpack":
+				var inv_panel = get_node_or_null("InventoryPanel")
+				if inv_panel:
+					inv_panel.visible = !inv_panel.visible
+					if inv_panel.visible: inv_panel.raise()
 		else:
 			# Release animación
 			var btn = sidebar_buttons[btn_name]
@@ -354,3 +408,85 @@ func _on_load():
 func _on_main_menu():
 	get_tree().paused = false # IMPORTANTE: Despausar antes de cambiar escena
 	get_tree().change_scene("res://ui/scenes/MainMenu.tscn")
+
+# --- SISTEMA DE NOTIFICACIONES PREMIUM ---
+func _on_item_added(id, amount):
+	var inv = get_node_or_null("/root/InventoryManager")
+	if not inv: return
+	
+	var item_data = inv.items.get(id)
+	if not item_data: return
+	
+	_show_item_notification(item_data["name"], amount, item_data["icon"])
+
+func _show_item_notification(item_name, amount, icon_path):
+	# SOLUCIÓN DE CONFLICTO: Usamos un Wrapper (Control) para que el VBoxContainer 
+	# no sobreescriba la posición de nuestra animación.
+	var wrapper = Control.new()
+	wrapper.rect_min_size = Vector2(240, 50)
+	wrapper.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	
+	# Crear el Toast (Panel de diseño premium)
+	var toast = Panel.new()
+	toast.rect_min_size = Vector2(240, 50)
+	toast.rect_size = Vector2(240, 50)
+	toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	toast.modulate.a = 0 # Iniciar invisible
+	
+	# Estilo Glassmorphism / Rústico
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0.1, 0.08, 0.05, 0.9)
+	style.border_width_bottom = 3 
+	style.border_color = Color(1.0, 0.8, 0.3, 0.9) 
+	style.corner_radius_top_left = 6
+	style.corner_radius_top_right = 6
+	style.corner_radius_bottom_left = 6
+	style.corner_radius_bottom_right = 6
+	style.shadow_size = 6
+	style.shadow_color = Color(0, 0, 0, 0.5)
+	toast.add_stylebox_override("panel", style)
+	
+	var hbox = HBoxContainer.new()
+	hbox.set_anchors_and_margins_preset(Control.PRESET_WIDE)
+	hbox.margin_left = 10
+	hbox.alignment = BoxContainer.ALIGN_CENTER
+	toast.add_child(hbox)
+	
+	# Icono
+	var tex_rect = TextureRect.new()
+	tex_rect.texture = load(icon_path)
+	tex_rect.rect_min_size = Vector2(35, 35)
+	tex_rect.expand = true
+	tex_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	hbox.add_child(tex_rect)
+	
+	# Texto
+	var label = Label.new()
+	label.text = "+%d %s" % [amount, item_name]
+	label.set("custom_colors/font_color", Color(1, 1, 1))
+	label.set("custom_colors/font_color_shadow", Color(0, 0, 0, 0.8))
+	label.set("custom_constants/shadow_offset_x", 1)
+	label.set("custom_constants/shadow_offset_y", 1)
+	hbox.add_child(label)
+	
+	wrapper.add_child(toast)
+	notify_container.add_child(wrapper)
+	notify_container.move_child(wrapper, 0) 
+	
+	# ANIMACIÓN REAL (Sin conflictos con VBoxContainer)
+	var t = get_tree().create_tween()
+	toast.rect_position.y -= 30 # Offset inicial
+	
+	# 1. ENTRADA (0.4s)
+	t.parallel().tween_property(toast, "modulate:a", 1.0, 0.3)
+	t.parallel().tween_property(toast, "rect_position:y", 0.0, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	
+	# 2. ESPERA (3.0 segundos) - Ahora secuencial correctamente
+	t.tween_interval(3.0) 
+	
+	# 3. SALIDA (0.5s) - Quitado parallel() del primero para que espere al intervalo
+	t.tween_property(toast, "modulate:a", 0.0, 0.5)
+	t.parallel().tween_property(toast, "rect_position:y", -30.0, 0.5).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	
+	# 4. LIMPIEZA
+	t.tween_callback(wrapper, "queue_free")

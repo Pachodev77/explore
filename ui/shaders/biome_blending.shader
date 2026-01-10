@@ -5,28 +5,26 @@ uniform sampler2D sand_tex;
 uniform sampler2D snow_tex;
 uniform sampler2D jungle_tex;
 
-uniform float uv_scale = 0.025; // Ajustado para metros (más grande)
+uniform float uv_scale = 0.025; 
+uniform vec3 player_pos;
+uniform float torch_intensity = 0.0; // 0 a 1 para activar el brillo per-pixel
 
 varying vec3 world_pos;
-varying vec2 terrain_uv;  // OPTIMIZACIÓN: Calcular UV en vertex
+varying vec2 terrain_uv;
 
 void vertex() {
 	world_pos = (WORLD_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	// OPTIMIZACIÓN: Mover cálculo de UV aquí (se ejecuta por vértice, no por pixel)
 	terrain_uv = fract(world_pos.xz * uv_scale);
 }
 
 void fragment() {
-	// Usar UV pre-calculado (OPTIMIZACIÓN)
 	vec2 uv = terrain_uv;
 	
-	// Pesos de mezcla por Vertex Color (RGBA)
 	float w_grass = COLOR.r;
 	float w_sand = COLOR.g;
 	float w_snow = COLOR.b;
 	float w_jungle = COLOR.a;
 	
-	// Mezcla simple y rápida por pesos (Mejor para GPU que los "if")
 	vec3 final_color = texture(grass_tex, uv).rgb * w_grass;
 	final_color += texture(sand_tex, uv).rgb * w_sand;
 	final_color += texture(snow_tex, uv).rgb * w_snow;
@@ -35,6 +33,18 @@ void fragment() {
 	final_color += (jungle * vec3(0.3, 0.6, 0.2)) * w_jungle;
 	
 	float total = w_grass + w_sand + w_snow + w_jungle + 0.0001;
-	ALBEDO = final_color / total;
+	vec3 base_albedo = final_color / total;
+	
+	// --- FIX PARA MÓVILES: ILUMINACIÓN PER-PIXEL ---
+	// La luz OmniLight en móviles a veces usa vertex-lighting que se ve "manchado" en mallas grandes.
+	// Añadimos un sutil refuerzo per-pixel si la antorcha está activa.
+	float d = distance(world_pos, player_pos);
+	float torch_glow = clamp(1.0 - (d / 22.0), 0.0, 1.0);
+	torch_glow = pow(torch_glow, 2.0); // Caída más natural
+	
+	// Solo aplicamos el brillo si torch_intensity es > 0
+	vec3 light_boost = vec3(1.0, 0.6, 0.2) * torch_glow * torch_intensity * 0.8;
+	
+	ALBEDO = base_albedo + (base_albedo * light_boost);
 	ROUGHNESS = 0.8;
 }

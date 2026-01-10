@@ -30,6 +30,15 @@ InventoryManager="*res://ui/scripts/InventoryManager.gd"
 LoadingManager="*res://ui/scripts/LoadingManager.gd"
 SceneManager="*res://ui/scripts/SceneManager.gd"
 
+[display]
+
+window/size/width=1280
+window/size/height=720
+window/size/test_width=1280
+window/size/test_height=720
+window/stretch/mode="2d"
+window/stretch/aspect="expand"
+
 [gui]
 
 common/drop_mouse_on_gui_input_disabled=true

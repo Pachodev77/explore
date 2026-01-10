@@ -3,7 +3,7 @@ extends Spatial
 # --- PROCEDURAL GOAT ULTRA V4 (SISTEMA DE ALTA CALIDAD) ---
 # Anatomía de montaña con mallas fusionadas y perfiles anatómicos reales.
 
-export var hu = 0.52 
+export var hu = 0.45 
 export var color = Color(0.98, 0.97, 0.92)
 export var horn_color = Color(0.28, 0.24, 0.2)
 export var skin_color = Color(0.9, 0.75, 0.75)
@@ -12,8 +12,14 @@ var parts = {}
 var master_material: SpatialMaterial
 
 func _ready():
+	randomize()
+	if randf() > 0.5:
+		color = Color(0.98, 0.97, 0.92) # Blanco original
+	else:
+		color = Color(0.6, 0.45, 0.3) # Café cabra de montaña
+		
 	master_material = SpatialMaterial.new()
-	master_material.albedo_color = Color(1, 1, 1)
+	master_material.albedo_color = color
 	master_material.roughness = 0.75
 	master_material.params_diffuse_mode = SpatialMaterial.DIFFUSE_BURLEY
 	_generate_structure()
@@ -32,24 +38,24 @@ func _generate_structure():
 	# 1. TORSO CAPRINO (Estructura en Cuña)
 	# Tórax profundo
 	var chest_p = Vector3(0, hu*0.12, -hu*0.5)
-	_create_part_mesh(body_root, "Chest", chest_p, Vector3(hu*0.65, hu*0.82, hu*0.75), "ellipsoid")
+	_create_part_mesh(body_root, "Chest", chest_p, Vector3(hu*0.55, hu*0.75, hu*0.7), "ellipsoid")
 	
 	# Pelvis elevada y ósea
 	var hip_p = Vector3(0, hu*0.2, hu*0.65)
-	_create_part_mesh(body_root, "Pelvis", hip_p, Vector3(hu*0.6, hu*0.78, hu*0.8), "ellipsoid")
+	_create_part_mesh(body_root, "Pelvis", hip_p, Vector3(hu*0.5, hu*0.7, hu*0.75), "ellipsoid")
 	
 	# Abdomen recogido (Tucked)
 	var belly_p = Vector3(0, -hu*0.05, 0)
-	_create_part_mesh(body_root, "Belly", belly_p, Vector3(hu*0.58, hu*0.68, hu*0.85), "ellipsoid")
+	_create_part_mesh(body_root, "Belly", belly_p, Vector3(hu*0.48, hu*0.6, hu*0.75), "ellipsoid")
 
 	# 2. CUELLO Y CABEZA
 	var neck_base = Spatial.new()
 	neck_base.name = "NeckBase"
-	neck_base.translation = chest_p + Vector3(0, hu*0.35, -hu*0.5)
+	neck_base.translation = chest_p + Vector3(0, hu*0.15, -hu*0.5) # Pivote más bajo
 	body_root.add_child(neck_base)
 	parts["neck_base"] = neck_base
 	
-	var n1_v = Vector3(0, hu*0.48, -hu*0.32)
+	var n1_v = Vector3(0, hu*0.7, -hu*0.45) # Cuello extendido
 	_create_part_mesh(neck_base, "Neck1", n1_v*0.5, Vector3(hu*0.34, hu*0.26, 0), "tapered", n1_v, 0.85)
 
 	var head_n = Spatial.new()
@@ -114,7 +120,7 @@ func _create_part_mesh(parent, p_name, pos, p_scale, type, dir = Vector3.ZERO, o
 	mi.cast_shadow = GeometryInstance.SHADOW_CASTING_SETTING_ON
 	return mi
 
-func _add_ellipsoid(st, center, scale, dir = Vector3.ZERO):
+func _add_ellipsoid(st, _center, scale, _dir = Vector3.ZERO):
 	var steps = 12
 	for i in range(steps):
 		var lat = PI * i / steps; var lat_n = PI * (i + 1) / steps
@@ -122,9 +128,14 @@ func _add_ellipsoid(st, center, scale, dir = Vector3.ZERO):
 			var lon = 2 * PI * j / (steps * 2); var lon_n = 2 * PI * (j + 1) / (steps * 2)
 			var p1 = _get_p(lat, lon, scale); var p2 = _get_p(lat_n, lon, scale)
 			var p3 = _get_p(lat, lon_n, scale); var p4 = _get_p(lat_n, lon_n, scale)
-			st.add_normal(p1.normalized()); st.add_vertex(p1); st.add_normal(p2.normalized()); st.add_vertex(p2)
-			st.add_normal(p3.normalized()); st.add_vertex(p3); st.add_normal(p2.normalized()); st.add_vertex(p2)
-			st.add_normal(p4.normalized()); st.add_vertex(p4); st.add_normal(p3.normalized()); st.add_vertex(p3)
+			# Triangulo 1 (CCW)
+			st.add_normal(p1.normalized()); st.add_vertex(p1)
+			st.add_normal(p2.normalized()); st.add_vertex(p2)
+			st.add_normal(p4.normalized()); st.add_vertex(p4)
+			# Triangulo 2 (CCW)
+			st.add_normal(p1.normalized()); st.add_vertex(p1)
+			st.add_normal(p4.normalized()); st.add_vertex(p4)
+			st.add_normal(p3.normalized()); st.add_vertex(p3)
 
 func _get_p(lat, lon, s): return Vector3(sin(lat)*cos(lon)*s.x, cos(lat)*s.y, sin(lat)*sin(lon)*s.z)
 
@@ -138,5 +149,11 @@ func _add_tapered(st, p1, p2, r1, r2):
 		var v1 = p1 + (right*c + fwd*s)*r1; var v2 = p1 + (right*cn + fwd*sn)*r1
 		var v3 = p2 + (right*c + fwd*s)*r2; var v4 = p2 + (right*cn + fwd*sn)*r2
 		var n1 = (v1-p1).normalized(); var n2 = (v2-p1).normalized()
-		st.add_normal(n1); st.add_vertex(v1); st.add_normal(n1); st.add_vertex(v3); st.add_normal(n2); st.add_vertex(v2)
-		st.add_normal(n2); st.add_vertex(v2); st.add_normal(n1); st.add_vertex(v3); st.add_normal(n2); st.add_vertex(v4)
+		# Triangulo 1: v1, v2, v4 (CCW)
+		st.add_normal(n1); st.add_vertex(v1)
+		st.add_normal(n2); st.add_vertex(v2)
+		st.add_normal(n2); st.add_vertex(v4)
+		# Triangulo 2: v1, v4, v3 (CCW)
+		st.add_normal(n1); st.add_vertex(v1)
+		st.add_normal(n2); st.add_vertex(v4)
+		st.add_normal(n1); st.add_vertex(v3)

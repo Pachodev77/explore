@@ -23,6 +23,7 @@ func _ready():
 		hud.connect("run_pressed", self, "_on_run_pressed")
 		hud.connect("jump_pressed", self, "_on_jump_pressed")
 		hud.connect("torch_pressed", self, "_on_torch_pressed")
+		hud.connect("action_pressed", self, "_on_action_pressed")
 		self.hud_ref = hud # Guardar referencia para actualizar botón
 	
 	# Asegurar que la cámara inicie recta y sin inclinación
@@ -36,6 +37,12 @@ func _ready():
 
 var hud_ref = null
 var is_sprinting = false
+var is_performing_action = false
+var milking_target_cow = null
+var current_target_tree_mmi = null
+var current_target_tree_idx = -1
+var _was_near_tree = false
+
 
 # --- SISTEMA DE RIENDAS ---
 var reins_line : ImmediateGeometry
@@ -85,7 +92,7 @@ func _create_torch():
 	light.light_color = Color(1.0, 0.6, 0.2)
 	light.light_energy = 2.0
 	light.omni_range = 22.0
-	light.omni_attenuation = 2.5
+	light.omni_attenuation = 1.0 # Lineal para mayor uniformidad en móviles
 	# OPTIMIZACIÓN MÓVIL: Desactivar sombras de antorcha en móviles para ganar FPS
 	light.shadow_enabled = not (OS.has_feature("Android") or OS.has_feature("iOS"))
 	light.shadow_bias = 1.5 
@@ -129,6 +136,16 @@ func _on_torch_pressed():
 	
 	if $WalkAnimator.has_method("set_torch"):
 		$WalkAnimator.set_torch(torch_active)
+	
+	# NOTIFICAR AL SHADER DEL SUELO (Para refuerzo per-pixel en móviles)
+	_update_ground_material_torch(torch_active)
+
+func _update_ground_material_torch(active):
+	var wm = get_parent().get_node_or_null("WorldManager")
+	if wm and wm.shared_res.has("ground_mat"):
+		var mat = wm.shared_res["ground_mat"]
+		if mat is ShaderMaterial:
+			mat.set_shader_param("torch_intensity", 1.0 if active else 0.0)
 
 func _process(_delta):
 	# 1. RIENDAS
@@ -149,6 +166,71 @@ func _process(_delta):
 				var noise = sin(time * 20.0) * 0.15 + sin(time * 35.0) * 0.05
 				_torch_light_ref.light_energy = 1.8 + noise
 				_torch_light_ref.omni_range = 21.0 + noise * 4.0
+		
+		# Sincronizar posición con el shader del suelo (Uniformidad móvil)
+		_ground_shader_tick += 1
+		if _ground_shader_tick >= 5: # Cada 5 frames es suficiente
+			_ground_shader_tick = 0
+			var wm = get_parent().get_node_or_null("WorldManager")
+			if wm and wm.shared_res.has("ground_mat"):
+				var mat = wm.shared_res["ground_mat"]
+				if mat is ShaderMaterial:
+					mat.set_shader_param("player_pos", global_transform.origin)
+	
+	# 3. DETECCIÓN DE ORDEÑO (MILK)
+	if hud_ref:
+		_milk_check_tick += 1
+		if _milk_check_tick >= 10: # Cada 10 frames es suficiente
+			_milk_check_tick = 0
+			var can_milk = false
+			var cows = get_tree().get_nodes_in_group("cow")
+			for c in cows:
+				# Solo vacas del establo que HAN LLEGADO a su posición de dormir (están dentro)
+				var is_in_stable = false
+				if c.get("is_night_cow") and c.get("has_reached_waypoint"):
+					var target = c.get("night_target_pos")
+					if target and c.global_transform.origin.distance_to(target) < 2.5:
+						is_in_stable = true
+				
+				if is_in_stable and c.global_transform.origin.distance_to(global_transform.origin) < 4.5:
+					can_milk = true
+					break
+			
+			# --- DETECCION DE ARBOLES ---
+			var can_wood = false
+			current_target_tree_mmi = null
+			current_target_tree_idx = -1
+			
+			if not can_milk:
+				var tree_mmis = get_tree().get_nodes_in_group("tree_mmi")
+				var closest_dist = 7.0 # Rango máximo
+				for mmi in tree_mmis:
+					if mmi is MultiMeshInstance and mmi.multimesh:
+						var mm = mmi.multimesh
+						for i in range(mm.instance_count):
+							var itf = mmi.global_transform * mm.get_instance_transform(i)
+							var dist = global_transform.origin.distance_to(itf.origin)
+							if dist < closest_dist:
+								closest_dist = dist
+								can_wood = true
+								current_target_tree_mmi = mmi
+								current_target_tree_idx = i
+
+			# Actualizar estados persistentes para los botones
+			_was_near_cow = can_milk
+			_was_near_tree = can_wood
+			
+			if _was_near_cow:
+				hud_ref.set_action_label("MILK")
+			elif _was_near_tree:
+				hud_ref.set_action_label("WOOD")
+			else:
+				hud_ref.set_action_label("ACTION")
+
+var _milk_check_tick = 0
+var _was_near_cow = false
+
+var _ground_shader_tick = 0
 
 var _torch_flicker_tick = 0
 var _torch_light_ref = null
@@ -322,19 +404,17 @@ func _physics_process(delta):
 	# LOGICA DE JINETE (CABALLO)
 	# ------------------------------------------------------------------
 	if is_riding and current_horse:
-		# Al estar montado, el jugador solo sigue al caballo
-		# La posición ya es relativa al mount_point (0,0,0) -> Ajuste visual Y+0.4
-		transform.origin = Vector3(0, 0.4, 0)
-		rotation = Vector3.ZERO
-		velocity = Vector3.ZERO  # CRITICAL: Zero out player velocity when riding
-		
-		# Pasamos el input al caballo para que él se mueva
+		# Transmitir input del jugador al caballo
 		current_horse.rider_input = move_dir
 		current_horse.rider_sprinting = is_sprinting
-		
-		# Opción: Permitir rotar la cámara independientemente, 
-		# pero el cuerpo del jugador sigue al caballo.
-		return # Saltamos el resto de física del jugador
+		return
+
+	if is_performing_action:
+		velocity.x = 0; velocity.z = 0
+		# Mantener pegado al suelo si cae
+		if not is_on_floor(): velocity.y -= 25.0 * delta
+		velocity = move_and_slide(velocity, Vector3.UP)
+		return
 		
 	# ------------------------------------------------------------------
 	# FIN LOGICA JINETE
@@ -480,3 +560,131 @@ func dismount():
 	
 	if reins_line:
 		reins_line.clear()
+
+func _on_action_pressed():
+	if is_performing_action or is_riding: return
+	
+	if _was_near_cow:
+		_start_milking_sequence()
+	elif _was_near_tree:
+		_start_woodcutting_sequence()
+
+func _start_woodcutting_sequence():
+	if not current_target_tree_mmi: return
+	
+	is_performing_action = true
+	
+	# Orientar al jugador de lado al árbol (Pose de leñador real)
+	var mm = current_target_tree_mmi.multimesh
+	var itf = current_target_tree_mmi.global_transform * mm.get_instance_transform(current_target_tree_idx)
+	
+	# Declaración inicial de dirección requerida para el cálculo de posición
+	var dir_to_tree = (itf.origin - global_transform.origin).normalized()
+	
+	# POSICIONAMIENTO AUTOMÁTICO (Acercarse/Alejarse a la distancia ideal)
+	var ideal_dist = 1.3 # Distancia perfecta para el hachazo (metros)
+	var target_pos = itf.origin - dir_to_tree * ideal_dist # Punto ideal frente al árbol
+	target_pos.y = global_transform.origin.y # Mantener altura del suelo actual
+	
+	# Usar Tween para mover al jugador suavemente a la posición correcta
+	var tween = get_tree().create_tween()
+	tween.tween_property(self, "translation", target_pos, 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	yield(tween, "finished")
+	
+	# RE-CALCULAR Rotación después de moverse (para precisión al pixel)
+	dir_to_tree = (itf.origin - global_transform.origin).normalized()
+	var target_rot = atan2(dir_to_tree.x, dir_to_tree.z)
+	
+	# Rotar 45 grados para que el golpe diagonal intercepte perfectamente el tronco
+	$MeshInstance.rotation.y = target_rot - deg2rad(45.0)
+	
+	# Activar animación de talado
+	if $WalkAnimator.has_method("set_chopping"):
+		$WalkAnimator.set_chopping(true)
+	
+	# Esperar 3 segundos
+	yield(get_tree().create_timer(3.0), "timeout")
+	
+	_finish_woodcutting()
+
+func _finish_woodcutting():
+	is_performing_action = false
+	if $WalkAnimator.has_method("set_chopping"):
+		$WalkAnimator.set_chopping(false)
+		
+	# ELIMINAR EL ÁRBOL ESPECÍFICO (Solo ese índice, en todas sus partes)
+	if is_instance_valid(current_target_tree_mmi) and current_target_tree_mmi.multimesh:
+		var tile = current_target_tree_mmi.get_parent().get_parent() # DecoContainer -> Tile
+		var container = current_target_tree_mmi.get_parent()
+		var target_idx = current_target_tree_idx
+		var target_group = "tree_mmi" if current_target_tree_mmi.is_in_group("tree_mmi") else "cactus_mmi"
+		
+		# 1. Persistencia: Informar al Tile que este árbol ha muerto para siempre
+		if tile.has_method("mark_instance_as_harvested"):
+			tile.mark_instance_as_harvested(target_group, target_idx)
+		
+		# 2. Visual: Hacerlo invisible inmediatamente en TODAS las partes (MMIs hermanos)
+		for child in container.get_children():
+			if child is MultiMeshInstance and child.multimesh and child.is_in_group(target_group):
+				var mm = child.multimesh
+				if target_idx >= 0 and target_idx < mm.instance_count:
+					var tf = mm.get_instance_transform(target_idx)
+					tf = tf.scaled(Vector3.ZERO) # Escala 0 = Invisible e inalcanzable
+					mm.set_instance_transform(target_idx, tf)
+		
+		print("DEBUG: Árbol individual [", target_idx, "] eliminado de forma aislada")
+
+	# AGREGAR MADERA
+	if has_node("/root/InventoryManager"):
+		get_node("/root/InventoryManager").add_item("wood", 3)
+	
+	current_target_tree_mmi = null
+	current_target_tree_idx = -1
+
+func _start_milking_sequence():
+	# Buscar la vaca más cercana para orientarnos
+	var cows = get_tree().get_nodes_in_group("cow")
+	var nearest = null
+	var min_d = 99.0
+	for c in cows:
+		var d = c.global_transform.origin.distance_to(global_transform.origin)
+		if d < min_d:
+			min_d = d
+			nearest = c
+	
+	if nearest:
+		is_performing_action = true
+		milking_target_cow = nearest
+		
+		# Orientar al jugador hacia la vaca
+		var dir_to_cow = (nearest.global_transform.origin - global_transform.origin).normalized()
+		var target_rot = atan2(dir_to_cow.x, dir_to_cow.z)
+		$MeshInstance.rotation.y = target_rot
+		
+		# Acercarse un poco más automáticamente si está lejos
+		if min_d > 1.8:
+			var target_pos = nearest.global_transform.origin - dir_to_cow * 1.5
+			global_transform.origin.x = target_pos.x
+			global_transform.origin.z = target_pos.z
+		
+		# Activar animación en el WalkAnimator
+		if $WalkAnimator.has_method("set_milking"):
+			$WalkAnimator.set_milking(true)
+		
+		# Esperar 3 segundos
+		yield(get_tree().create_timer(3.0), "timeout")
+		
+		# Finalizar ordeño
+		_finish_milking()
+
+func _finish_milking():
+	is_performing_action = false
+	if $WalkAnimator.has_method("set_milking"):
+		$WalkAnimator.set_milking(false)
+		
+	# AGREGAR LECHE AL INVENTARIO REAL
+	if has_node("/root/InventoryManager"):
+		get_node("/root/InventoryManager").add_item("milk", 1)
+		print("DEBUG: +1 Leche agregada al inventario")
+	
+	milking_target_cow = null
