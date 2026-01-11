@@ -34,7 +34,7 @@ shader_param/border_width = 1.0
 
 [sub_resource type="ShaderMaterial" id=2]
 shader = ExtResource( 5 )
-shader_param/value = 0.75
+shader_param/value = 1.0
 shader_param/color_start = Color( 0.862745, 0.14902, 0.14902, 1 )
 shader_param/color_end = Color( 0.972549, 0.443137, 0.443137, 1 )
 shader_param/bg_color = Color( 0, 0, 0, 0.85 )
@@ -43,7 +43,7 @@ shader_param/pulse_speed = 1.0
 
 [sub_resource type="ShaderMaterial" id=3]
 shader = ExtResource( 5 )
-shader_param/value = 0.5
+shader_param/value = 1.0
 shader_param/color_start = Color( 0.145098, 0.388235, 0.921569, 1 )
 shader_param/color_end = Color( 0.376471, 0.647059, 0.980392, 1 )
 shader_param/bg_color = Color( 0, 0, 0, 0.85 )
@@ -202,14 +202,14 @@ size_flags_horizontal = 3
 
 [node name="Fill" type="Node" parent="Header/StatusBars/HealthBarCont/HealthBar"]
 
-[node name="ManaBarCont" type="HBoxContainer" parent="Header/StatusBars"]
+[node name="HydrationBarCont" type="HBoxContainer" parent="Header/StatusBars"]
 margin_top = 42.0
 margin_right = 400.0
 margin_bottom = 70.0
 mouse_filter = 2
 custom_constants/separation = 15
 
-[node name="Icon" type="TextureRect" parent="Header/StatusBars/ManaBarCont"]
+[node name="Icon" type="TextureRect" parent="Header/StatusBars/HydrationBarCont"]
 margin_right = 28.0
 margin_bottom = 28.0
 rect_min_size = Vector2( 28, 28 )
@@ -217,14 +217,14 @@ texture = ExtResource( 11 )
 expand = true
 stretch_mode = 6
 
-[node name="ManaBar" type="ColorRect" parent="Header/StatusBars/ManaBarCont"]
+[node name="HydrationBar" type="ColorRect" parent="Header/StatusBars/HydrationBarCont"]
 material = SubResource( 3 )
 margin_left = 43.0
 margin_right = 343.0
 margin_bottom = 28.0
 rect_min_size = Vector2( 300, 15 )
 
-[node name="Fill" type="Node" parent="Header/StatusBars/ManaBarCont/ManaBar"]
+[node name="Fill" type="Node" parent="Header/StatusBars/HydrationBarCont/HydrationBar"]
 
 [node name="Currency" type="HBoxContainer" parent="Header"]
 margin_left = 500.0

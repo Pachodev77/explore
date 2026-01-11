@@ -15,6 +15,7 @@ var height_noise = OpenSimplexNoise.new()
 var biome_noise = OpenSimplexNoise.new()
 var last_player_tile = Vector2.INF
 var update_timer = 0.0
+var _lod_upgrade_timer = 0.0 # Timer para upgrades de LOD
 
 # Configuración de alturas base
 const H_SNOW = 45.0
@@ -39,7 +40,8 @@ var shared_res = {
 	"wood_mat": null, # Cached
 	"sign_mat": null, # Cached
 	"cow_scene": null,
-	"goat_scene": null
+	"goat_scene": null,
+	"chicken_scene": null
 }
 
 # Object Pool
@@ -113,21 +115,17 @@ func _ready():
 		var horse = horse_scene.instance()
 		add_child(horse)
 		horse.global_transform.origin = Vector3(10, 5, -10)
-		print("DEBUG: Caballo SPAWNED en global ", horse.global_transform.origin)
 		
 	var cow_scene = load("res://ui/scenes/Cow.tscn")
 	if cow_scene:
 		# Vaca 1
 		var cow1 = cow_scene.instance()
 		add_child(cow1)
-		cow1.speed = 4.0 # Un poco más rápido para asegurar que lleguen
+		cow1.speed = 4.0
 		cow1.global_transform.origin = Vector3(15, 5, -15)
 		cow1.is_night_cow = true
-		# Waypoints separados para no chocar en la entrada
 		cow1.night_waypoint_pos = Vector3(11.8, 2.1, 13.0) 
-		# Target: Compartimento Izquierdo (X local -2.5). Global calc: (22.0, 2, 18.5)
 		cow1.night_target_pos = Vector3(22.0, 2.1, 18.5)
-		print("DEBUG: Vaca 1 SPAWNED -> Target IZQUIERDO")
 		
 		# Vaca 2
 		var cow2 = cow_scene.instance()
@@ -136,20 +134,38 @@ func _ready():
 		cow2.global_transform.origin = Vector3(-15, 5, 15)
 		cow2.is_night_cow = true
 		cow2.night_waypoint_pos = Vector3(13.0, 2.1, 11.8)
-		# Target: Compartimento Derecho (X local +2.5). Global calc: (18.5, 2, 22.0)
 		cow2.night_target_pos = Vector3(18.5, 2.1, 22.0)
-		print("DEBUG: Vaca 2 SPAWNED -> Target DERECHO")
 		
 	var goat_scene = load("res://ui/scenes/Goat.tscn")
 	if goat_scene:
-		var goat_pos = [Vector3(-10, 5, -15), Vector3(20, 5, 5), Vector3(0, 5, 20)]
-		for i in range(goat_pos.size()):
+		# Cabras iniciales en un círculo muy cerrado (Radio 3m)
+		for i in range(3):
 			var goat = goat_scene.instance()
 			add_child(goat)
-			goat.global_transform.origin = goat_pos[i]
-			print("DEBUG: Cabra ", i+1, " SPAWNED en ", goat.global_transform.origin)
-	else:
-		print("DEBUG: ERROR - No se pudo cargar Goat.tscn")
+			var angle = i * (TAU / 3.0)
+			var cluster_offset = Vector3(cos(angle), 0, sin(angle)) * 3.0
+			goat.global_transform.origin = Vector3(10, 5, 0) + cluster_offset
+	
+	var chicken_scene = load("res://ui/scenes/Chicken.tscn")
+	if chicken_scene:
+		for i in range(4):
+			var chicken = chicken_scene.instance()
+			add_child(chicken)
+			chicken.size_unit = 0.28
+			var angle = i * (TAU / 4.0)
+			var offset = Vector3(cos(angle), 0, sin(angle)) * 4.0
+			chicken.global_transform.origin = Vector3(-18, 2.22, 18) + offset
+			
+			# Navegación nocturna
+			chicken.is_night_chicken = true
+			chicken.night_waypoint_pos = Vector3(-17.0, 2.22, 17.0) 
+			var targets = [
+				Vector3(-20.5, 2.22, 20.5),
+				Vector3(-21.5, 2.22, 20.5),
+				Vector3(-20.5, 2.22, 21.5),
+				Vector3(-21.5, 2.22, 21.5)
+			]
+			chicken.night_target_pos = targets[i]
 	
 	last_player_tile = p_coords
 	update_tiles()
@@ -208,6 +224,7 @@ func _sort_by_dist(a, b):
 const SUPER_CHUNK_SIZE = 5 
 var settlement_seed = 0
 var road_cache = {} # Cache for segments: { "sc_x,sc_z": [ {p1, p2}, ... ] }
+var _cached_rng : RandomNumberGenerator = null # OPTIMIZACIÓN: Evitar creación constante
 
 func _init_settlement_seed():
 	settlement_seed = noise.seed + 999
@@ -354,19 +371,21 @@ func _dist_to_road_segment(gx, gz, t_start, t_end, is_horizontal):
 	var cp1 = Vector3.ZERO
 	var cp2 = Vector3.ZERO
 	
+	# OPTIMIZACIÓN: Reusar RNG en lugar de crear uno nuevo cada llamada
+	if not _cached_rng:
+		_cached_rng = RandomNumberGenerator.new()
+	
 	if is_horizontal:
 		start_pos = Vector3(t_start.x * tile_size + 33.0, 0, t_start.y * tile_size)
 		end_pos = Vector3(t_end.x * tile_size - 33.0, 0, t_end.y * tile_size)
 		
-		# Control points Horizontal - Add random curvature
 		var dist = start_pos.distance_to(end_pos)
 		var handle_len = dist * 0.4
 		
 		var seed_x = int(t_start.x) + int(t_end.x)
 		var seed_z = int(t_start.y) + int(t_end.y)
-		var curv_rng = RandomNumberGenerator.new()
-		curv_rng.seed = (seed_x * 49297) ^ (seed_z * 91823) ^ settlement_seed
-		var curve_z = curv_rng.randf_range(-40.0, 40.0)
+		_cached_rng.seed = (seed_x * 49297) ^ (seed_z * 91823) ^ settlement_seed
+		var curve_z = _cached_rng.randf_range(-40.0, 40.0)
 		
 		cp1 = start_pos + Vector3(handle_len, 0, curve_z)
 		cp2 = end_pos - Vector3(handle_len, 0, -curve_z)
@@ -386,9 +405,8 @@ func _dist_to_road_segment(gx, gz, t_start, t_end, is_horizontal):
 		
 		var seed_x_v = int(t_start.x)
 		var seed_z_v = int(t_start.y)
-		var curv_rng_v = RandomNumberGenerator.new()
-		curv_rng_v.seed = (seed_x_v * 73821) ^ (seed_z_v * 19283) ^ settlement_seed
-		var curve_x = curv_rng_v.randf_range(-40.0, 40.0)
+		_cached_rng.seed = (seed_x_v * 73821) ^ (seed_z_v * 19283) ^ settlement_seed
+		var curve_x = _cached_rng.randf_range(-40.0, 40.0)
 		
 		cp1 = start_pos + Vector3(curve_x, 0, handle_len)
 		cp2 = end_pos - Vector3(-curve_x, 0, handle_len)
@@ -489,6 +507,7 @@ func setup_shared_resources():
 	# CACHE ANIMAL SCENES
 	shared_res["cow_scene"] = load("res://ui/scenes/Cow.tscn")
 	shared_res["goat_scene"] = load("res://ui/scenes/Goat.tscn")
+	shared_res["chicken_scene"] = load("res://ui/scenes/Chicken.tscn")
 
 	create_water_plane()
 
@@ -524,23 +543,27 @@ func create_water_plane():
 func _process(delta):
 	var p_pos = player.global_transform.origin
 	
-	# OPTIMIZACIÓN: Solo chequear cambio de tile/LOD cada 0.4 segundos en móviles
+	# OPTIMIZACIÓN: Solo chequear cambio de tile/LOD con intervalos más largos
 	update_timer -= delta
 	if update_timer <= 0:
-		update_timer = 0.4 # Aumentado de 0.3
+		update_timer = 0.5 # 2 veces por segundo es suficiente
 		var current_tile_coords = get_tile_coords(p_pos)
 		if current_tile_coords.distance_to(last_player_tile) > 0.5:
 			last_player_tile = current_tile_coords
 			update_tiles()
-		
-		# UPGRADE QUEUE: Solo hacer upgrade si está muy cerca (reducido para móviles)
+	
+	# LOD UPGRADE: Separado del update_tiles y con menor frecuencia
+	_lod_upgrade_timer -= delta
+	if _lod_upgrade_timer <= 0:
+		_lod_upgrade_timer = 2.0 # Solo cada 2 segundos - muy costoso
 		for coords in active_tiles.keys():
 			var tile = active_tiles[coords]
 			if tile.has_method("upgrade_to_high_lod") and tile.current_lod == tile.TileLOD.LOW:
 				var dist = p_pos.distance_to(tile.global_transform.origin)
-				if dist < 250.0: # Reducido de 320 para móviles
+				if dist < 200.0: # Reducido aún más
 					tile.upgrade_to_high_lod()
-					break 
+					break # Solo 1 por ciclo
+ 
 	
 	# SPAWN QUEUE: 1 tile por frame (reducido a 4 candidatos de búsqueda)
 	if spawn_queue.size() > 0:
@@ -592,3 +615,46 @@ func get_tile_coords(pos):
 	# POSICIÓN GLOBAL: Usamos global_transform para ignorar el parentesco
 	return Vector2(floor((pos.x + tile_size*0.5) / tile_size), floor((pos.z + tile_size*0.5) / tile_size))
 
+
+func get_terrain_height_at(x, z):
+	if not shared_res.has("biome_noise") or not shared_res.has("height_noise"):
+		return 0.0
+		
+	var b_noise = shared_res["biome_noise"]
+	var h_noise = shared_res["height_noise"]
+	var noise_val = b_noise.get_noise_2d(x, z)
+	var deg = rad2deg(atan2(z, x)) + (noise_val * 120.0)
+	
+	while deg > 180: deg -= 360
+	while deg <= -180: deg += 360
+	
+	var hn = shared_res["H_SNOW"]; var hs = shared_res["H_JUNGLE"]
+	var he = shared_res["H_DESERT"]; var hw = shared_res["H_PRAIRIE"]
+	var h_mult = 0.0
+	
+	if deg >= -90 and deg <= 0:
+		var t = (deg + 90) / 90.0
+		h_mult = lerp(hn, he, t)
+	elif deg > 0 and deg <= 90:
+		var t = deg / 90.0
+		h_mult = lerp(he, hs, t)
+	elif deg > 90 and deg <= 180:
+		var t = (deg - 90) / 90.0
+		h_mult = lerp(hs, hw, t)
+	else:
+		var t = (deg + 180) / 90.0
+		h_mult = lerp(hw, hn, t)
+		
+	var y = h_noise.get_noise_2d(x, z) * h_mult
+	
+	# Spawn Area flattening (Approximation of GroundTile logic)
+	if abs(x) < 50 and abs(z) < 50:
+		var dist = max(abs(x), abs(z))
+		var blend = clamp(1.0 - (dist - 33.0) / 20.0, 0.0, 1.0)
+		y = lerp(y, 2.0, blend)
+		
+	var road_info = get_road_influence(x, z)
+	if road_info.is_road:
+		y = lerp(y, road_info.height, road_info.weight)
+		
+	return y

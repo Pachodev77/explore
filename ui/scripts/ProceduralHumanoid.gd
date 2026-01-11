@@ -33,44 +33,27 @@ func _ready():
 		while file_name != "":
 			if file_name.begins_with("humanoid_cache_"):
 				dir.remove(file_name)
-				print("DEBUG: Cache eliminado:", file_name)
 			file_name = dir.get_next()
 	
 	var cache_path = "user://humanoid_cache_final_v7.tres"
 	var cached_mesh = null
 	
-	print("--- INICIANDO GENERACIÓN DE HUMANOIDE V33 (BIGGER HANDS) ---")
-	
 	_setup_materials()
-	_generate_rig()  # Crea el skeleton
-	
-	# DEBUG: Verificar que el skeleton se creó
-	if skel_node:
-		print("✅ Skeleton creado con", skel_node.get_bone_count(), "huesos")
-	else:
-		print("❌ ERROR: Skeleton NO se creó")
+	_generate_rig()
 	
 	if cached_mesh and cached_mesh is ArrayMesh:
-		# Usar mesh cacheado (INSTANTÁNEO - ~5ms)
 		mesh = cached_mesh
-		print("ProceduralHumanoid: Mesh cargado desde caché")
 	else:
-		# Primera vez: Generar mesh completo
-		print("ProceduralHumanoid: Generando mesh...")
 		_generate_skinned_mesh()
 		_apply_visual_test()
 		
-		# Guardar solo el mesh en caché
 		if mesh:
-			var result = ResourceSaver.save(cache_path, mesh)
-			if result == OK:
-				print("ProceduralHumanoid: Mesh guardado en caché")
+			ResourceSaver.save(cache_path, mesh)
 	
 	# CRÍTICO: Asignar skeleton path SIEMPRE (no solo al generar mesh)
 	# Esto permite que la animación funcione incluso con mesh cacheado
 	if skel_node:
 		self.skeleton = get_path_to(skel_node)
-		print("✅ Skeleton path asignado:", self.skeleton)
 	
 	# FIX SOMBRAS MÓVILES: Evitar auto-sombras internas en partes del cuerpo
 	# SHADOW_CASTING_SETTING_ON = proyecta sombras normales pero puede recibirlas (causa artefactos)
@@ -141,9 +124,6 @@ func _generate_rig():
 	skel_node.name = "HumanoidRig"
 	add_child(skel_node)
 	
-	print("DEBUG: Skeleton creado y añadido como hijo de:", get_name())
-	print("DEBUG: Ruta del skeleton:", skel_node.get_path())
-	
 	_add_bone("Hips", -1, Vector3(0, 0.95, 0))
 	_add_bone("Spine", bone_ids["Hips"], Vector3(0, 0.15, 0))
 	_add_bone("Spine2", bone_ids["Spine"], Vector3(0, 0.2, 0))
@@ -165,8 +145,6 @@ func _generate_rig():
 	hand_r_attachment.bone_name = "HandR"
 	hand_r_attachment.name = "HandRAttachment"
 	skel_node.add_child(hand_r_attachment)
-	
-	print("DEBUG: Total de huesos creados:", skel_node.get_bone_count())
 
 var hand_r_attachment = null
 
@@ -343,4 +321,4 @@ func _generate_skinned_mesh():
 	mesh = am
 
 func _apply_visual_test():
-	print("ProceduralHumanoid V9: Multi-material listo.")
+	pass

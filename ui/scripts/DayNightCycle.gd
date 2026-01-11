@@ -79,6 +79,15 @@ func update_cycle():
 	environment.ambient_light_color = lerp(AMBIENT_NIGHT, AMBIENT_DAY, day_phase)
 	environment.fog_color = environment.ambient_light_color
 	
+	# 4. Luces de la casa (Antorchas, etc)
+	var house_lights = get_tree().get_nodes_in_group("house_lights")
+	for light in house_lights:
+		if light is OmniLight or light is SpotLight:
+			# Se encienden cuando day_phase es bajo (noche)
+			var night_intensity = 1.0 - day_phase
+			light.visible = night_intensity > 0.05
+			light.light_energy = night_intensity * 1.5
+	
 	# ProceduralSky logic REMOVED entirely - causes lag on GLES2/Old GPU
 	
 	# OPTIMIZACIÓN: Cactus brightness ELIMINADO

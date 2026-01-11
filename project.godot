@@ -10,11 +10,17 @@ config_version=4
 
 _global_script_classes=[ {
 "base": "KinematicBody",
+"class": "AnimalBase",
+"language": "GDScript",
+"path": "res://ui/scripts/AnimalBase.gd"
+}, {
+"base": "KinematicBody",
 "class": "Horse",
 "language": "GDScript",
 "path": "res://ui/scripts/Horse.gd"
 } ]
 _global_script_class_icons={
+"AnimalBase": "",
 "Horse": ""
 }
 

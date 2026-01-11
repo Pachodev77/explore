@@ -51,6 +51,7 @@ func setup_biome(_dummy_type, shared_resources, _dummy_height = 0, is_spawn = fa
 			if abs(translation.x) < 1.0 and abs(translation.z) < 1.0:
 				_add_farmhouse(deco_container, shared_resources)
 				_add_stable(deco_container, shared_resources)
+				_add_chicken_coop(deco_container, shared_resources)
 
 func upgrade_to_high_lod():
 	if current_lod == TileLOD.HIGH: return
@@ -73,6 +74,7 @@ func upgrade_to_high_lod():
 		if abs(translation.x) < 1.0 and abs(translation.z) < 1.0:
 			_add_farmhouse(deco_container, current_shared_res)
 			_add_stable(deco_container, current_shared_res)
+			_add_chicken_coop(deco_container, current_shared_res)
 
 func _add_fence(container, shared_res):
 	# OPTIMIZACIÓN: Material Cacheado
@@ -490,6 +492,11 @@ func _add_farmhouse(container, shared_res):
 	chim_top.material_override = mat_trim
 	house_node.add_child(chim_top)
 
+	# 9. ANTORCHAS EN LOS PILARES
+	for tx in [-4.5, 4.5]:
+		var side = 1.0 if tx > 0 else -1.0
+		_add_torch(house_node, Vector3(tx, 2.5, 7.45), shared_res, side)
+
 	# --- COLISIONES ---
 	_add_house_collision(house_node)
 
@@ -520,6 +527,49 @@ func _add_house_collision(house_node):
 	cs_roof.shape = shape_roof
 	cs_roof.translation = Vector3(0, 8.5, 0)
 	sb.add_child(cs_roof)
+
+func _add_torch(parent, pos, shared_res, side):
+	var torch_node = Spatial.new()
+	# Reposicionar un poco para que la base toque el pilar al estar inclinada
+	torch_node.translation = pos + Vector3(0, 0, 0.15)
+	# Inclinar fuertemente hacia el frente (X positivo)
+	torch_node.rotation_degrees.x = 45.0
+	torch_node.rotation_degrees.z = 0.0
+	parent.add_child(torch_node)
+	
+	# Poste de la antorcha
+	var stick = MeshInstance.new()
+	var stick_mesh = CubeMesh.new()
+	stick_mesh.size = Vector3(0.08, 0.4, 0.08)
+	stick.mesh = stick_mesh
+	var wood_mat = shared_res.get("wood_mat")
+	if wood_mat: stick.material_override = wood_mat
+	torch_node.add_child(stick)
+	
+	# Brasa / Fuego (Efecto visual)
+	var ember = MeshInstance.new()
+	var ember_mesh = SphereMesh.new()
+	ember_mesh.radius = 0.08; ember_mesh.height = 0.16
+	ember.mesh = ember_mesh
+	var fire_mat = SpatialMaterial.new()
+	fire_mat.albedo_color = Color(1.0, 0.4, 0.1)
+	fire_mat.emission_enabled = true
+	fire_mat.emission = Color(1.0, 0.4, 0.0)
+	fire_mat.emission_energy = 2.0
+	ember.material_override = fire_mat
+	ember.translation.y = 0.25
+	torch_node.add_child(ember)
+	
+	# Luz Real
+	var light = OmniLight.new()
+	light.light_color = Color(1.0, 0.6, 0.2)
+	light.light_energy = 0.0 # El DayNightCycle la encenderá
+	light.omni_range = 10.0
+	light.omni_attenuation = 2.0
+	light.add_to_group("house_lights")
+	light.translation.y = 0.3
+	light.shadow_enabled = false # Por rendimiento en móviles
+	torch_node.add_child(light)
 
 func _add_stable(container, shared_res):
 	var stable_node = Spatial.new()
@@ -652,6 +702,151 @@ func _add_stable_collision(stable_node):
 	cs_div.shape = shape_div
 	cs_div.translation = Vector3(0, 0.6, -3.2)
 	sb.add_child(cs_div)
+
+func _add_chicken_coop(container, shared_res):
+	var coop_node = Spatial.new()
+	# Ubicación: Esquina Suroeste (-18, 18)
+	coop_node.translation = Vector3(-18.0, 2.0, 18.0)
+	coop_node.rotation_degrees.y = 135.0
+	container.add_child(coop_node)
+	
+	var mat_wood = shared_res.get("wood_mat")
+	var mat_wood_light = SpatialMaterial.new()
+	mat_wood_light.albedo_color = Color(0.6, 0.45, 0.3)
+	
+	var mat_roof = SpatialMaterial.new()
+	mat_roof.albedo_color = Color(0.5, 0.2, 0.1) # Rojo madera oscura
+	mat_roof.roughness = 0.7
+	
+	var mat_wire = SpatialMaterial.new()
+	mat_wire.albedo_color = Color(0.4, 0.4, 0.45)
+	mat_wire.metallic = 0.8
+	mat_wire.roughness = 0.2
+	
+	# 1. BASE ELEVADA (4 Pilares)
+	var post_mesh = CubeMesh.new()
+	post_mesh.size = Vector3(0.2, 1.5, 0.2)
+	for px in [-1.4, 1.4]:
+		for pz in [-1.2, 1.2]:
+			var post = MeshInstance.new()
+			post.mesh = post_mesh
+			post.translation = Vector3(px, 0.75, pz)
+			post.material_override = mat_wood
+			coop_node.add_child(post)
+			
+	# 2. CUERPO PRINCIPAL (La casita)
+	var house_body = MeshInstance.new()
+	house_body.mesh = CubeMesh.new()
+	house_body.mesh.size = Vector3(3.0, 2.0, 2.5)
+	house_body.translation = Vector3(0, 2.5, 0)
+	house_body.material_override = mat_wood_light
+	coop_node.add_child(house_body)
+	
+	# 3. TECHO A DOS AGUAS
+	var roof = MeshInstance.new()
+	var prism = PrismMesh.new()
+	prism.size = Vector3(3.5, 1.2, 3.0)
+	roof.mesh = prism
+	roof.translation = Vector3(0, 4.1, 0)
+	roof.material_override = mat_roof
+	coop_node.add_child(roof)
+	
+	# 4. CAJAS DE NIDIFICACIÓN (Laterales)
+	for side in [-1, 1]:
+		var nest = MeshInstance.new()
+		nest.mesh = CubeMesh.new()
+		nest.mesh.size = Vector3(0.8, 0.8, 1.8)
+		nest.translation = Vector3(side * 1.8, 2.2, 0)
+		nest.material_override = mat_wood
+		coop_node.add_child(nest)
+		
+		# Tejadillo de la caja
+		var n_roof = MeshInstance.new()
+		n_roof.mesh = CubeMesh.new()
+		n_roof.mesh.size = Vector3(1.0, 0.1, 2.0)
+		n_roof.translation = Vector3(side * 1.9, 2.6, 0)
+		n_roof.rotation_degrees.z = side * 20
+		n_roof.material_override = mat_roof
+		coop_node.add_child(n_roof)
+		
+	# 5. RAMPA DE ACCESO
+	var ramp = MeshInstance.new()
+	ramp.mesh = CubeMesh.new()
+	ramp.mesh.size = Vector3(1.2, 0.1, 2.5)
+	ramp.translation = Vector3(0, 0.75, 2.0)
+	ramp.rotation_degrees.x = 35
+	ramp.material_override = mat_wood
+	coop_node.add_child(ramp)
+	
+	# 6. CORRALITO (RUN) - Estructura de malla Cuadrada (6x6m aprox)
+	var run_structure = Spatial.new()
+	var run_size = 6.0 
+	var half_run = run_size * 0.5
+	run_structure.translation = Vector3(0, 0, -1.25) # Centrado respecto a la trasera de la caseta
+	coop_node.add_child(run_structure)
+	
+	# Postes del corralito (Esquinas del cuadrado)
+	var r_post_mesh = CubeMesh.new()
+	r_post_mesh.size = Vector3(0.15, 2.0, 0.15)
+	var r_posts = [
+		Vector3(-half_run, 1.0, -run_size), Vector3(half_run, 1.0, -run_size),
+		Vector3(-half_run, 1.0, 0), Vector3(half_run, 1.0, 0)
+	]
+	for rp in r_posts:
+		var p = MeshInstance.new()
+		p.mesh = r_post_mesh
+		p.translation = rp
+		p.material_override = mat_wood
+		run_structure.add_child(p)
+		
+	# Malla (Simulada con travesaños finos)
+	var wire_v = CubeMesh.new()
+	wire_v.size = Vector3(0.02, 2.0, 0.02)
+	
+	# Alambres Frontales y Traseros (Ejes X)
+	for x in range(int(-half_run * 10), int(half_run * 10) + 1, 4):
+		for lz in [0.0, -run_size]:
+			var w = MeshInstance.new()
+			w.mesh = wire_v
+			w.translation = Vector3(x * 0.1, 1.0, lz)
+			w.material_override = mat_wire
+			run_structure.add_child(w)
+			
+	# Alambres Laterales (Ejes Z)
+	for z in range(int(-run_size * 10), 1, 4):
+		for lx in [-half_run, half_run]:
+			var w = MeshInstance.new()
+			w.mesh = wire_v
+			w.translation = Vector3(lx, 1.0, z * 0.1)
+			w.material_override = mat_wire
+			run_structure.add_child(w)
+
+	# 7. COLISIONES ABIERTAS (Permitir entrada de gallinas)
+	var sb = StaticBody.new()
+	coop_node.add_child(sb)
+	
+	# Colisión de la caseta (un poco más alta para dejar pasar por debajo si fuera necesario)
+	var cs_house = CollisionShape.new()
+	var shape_house = BoxShape.new()
+	shape_house.extents = Vector3(1.5, 1.0, 1.25)
+	cs_house.shape = shape_house
+	cs_house.translation = Vector3(0, 3.0, 0)
+	sb.add_child(cs_house)
+	
+	# Colisiones de las Paredes del Corral (3 Lados cerrados, Frente abierto)
+	var run_col_pos = [
+		{"pos": Vector3(-half_run, 1.0, -half_run), "size": Vector3(0.1, 2.0, run_size)}, # Lateral Izquierdo
+		{"pos": Vector3(half_run, 1.0, -half_run), "size": Vector3(0.1, 2.0, run_size)},  # Lateral Derecho
+		{"pos": Vector3(0, 1.0, -run_size), "size": Vector3(run_size, 2.0, 0.1)}         # Trasera
+	]
+	
+	for col in run_col_pos:
+		var cs = CollisionShape.new()
+		var shape = BoxShape.new()
+		shape.extents = col.size * 0.5
+		cs.shape = shape
+		cs.translation = col.pos
+		sb.add_child(cs)
 
 func _add_fence_collisions(container):
 	var half = 33.0
@@ -786,9 +981,9 @@ func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn, grid_res = G
 	var new_mesh = st.commit()
 	mesh_instance.mesh = new_mesh
 	
-	# PHYSICS OPTIMIZATION: Use static collision only if needed
+	# PHYSICS: Usar trimesh para colisiones precisas en HIGH LOD
 	if lod_level == TileLOD.HIGH or is_spawn:
-		yield(get_tree(), "idle_frame") # Extra wait
+		yield(get_tree(), "idle_frame")
 		if not is_instance_valid(self): return
 		
 		var collision_shape = get_node_or_null("CollisionShape")
@@ -797,9 +992,10 @@ func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn, grid_res = G
 			collision_shape.name = "CollisionShape"
 			add_child(collision_shape)
 		
-		# trimesh is heavy, can we simplify? 
-		# For теперь we keep it but ensure it's the last thing done.
+		# Trimesh para colisiones precisas con el terreno
 		collision_shape.shape = new_mesh.create_trimesh_shape()
+
+
 
 func _add_decos_final(deco_container, shared_res, is_spawn):
 	# Limpieza previa
@@ -957,15 +1153,19 @@ func _add_animals(container, shared_res):
 					container.add_child(cow)
 	
 	elif deg > -135 and deg <= -45: # SNOW
-		if randf() < 0.10: # OPTIMIZADO: Reducido de 0.20
+		if randf() < 0.10: 
 			var goat_scene = shared_res["goat_scene"]
 			if goat_scene:
-				var count = randi() % 2 + 1 # Reducido de 3+1
-				for _i in range(count):
+				var count = randi() % 3 + 2 # Grupos de 2 a 4 cabras
+				var center_pos = Vector3(rand_range(-30, 30), 0, rand_range(-30, 30))
+				for i in range(count):
 					yield(get_tree(), "idle_frame")
 					if not is_instance_valid(self): return
 					var goat = goat_scene.instance()
-					var pos = Vector3(rand_range(-40, 40), 0, rand_range(-40, 40))
+					# Spawn en cluster (radio de 4 metros)
+					var angle = i * (TAU / count)
+					var cluster = Vector3(cos(angle), 0, sin(angle)) * rand_range(2, 4)
+					var pos = center_pos + cluster
 					var gx = translation.x + pos.x
 					var gz = translation.z + pos.z
 					goat.translation = pos + Vector3(0, shared_res["height_noise"].get_noise_2d(gx, gz) * shared_res["H_SNOW"] + 0.5, 0)

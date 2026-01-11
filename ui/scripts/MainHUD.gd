@@ -284,14 +284,12 @@ func _on_button_input(event, btn_name):
 			if now - last_press_time < 150: return 
 			last_press_time = now
 			
-			print("DEBUG: Botón clickeado: ", btn_name)
 			animate_button_press(btn)
 			
 			# Acciones Instantáneas (se ejecutan al pulsar)
 			if btn_name == "zoom":
 				emit_signal("zoom_pressed")
 			elif btn_name == "torch":
-				print("DEBUG: Emitiendo torch_pressed")
 				emit_signal("torch_pressed")
 			elif btn_name == "map":
 				# Ahora funciona como botón de Acción
@@ -361,8 +359,8 @@ func animate_button_release(node):
 func set_health(val_percent):
 	$Header/StatusBars/HealthBarCont/HealthBar.material.set_shader_param("value", val_percent)
 
-func set_mana(val_percent):
-	$Header/StatusBars/ManaBarCont/ManaBar.material.set_shader_param("value", val_percent)
+func set_hydration(val_percent):
+	$Header/StatusBars/HydrationBarCont/HydrationBar.material.set_shader_param("value", val_percent)
 
 func _process(_delta):
 	# Actualizar brújula basado en la rotación de la cámara
@@ -398,12 +396,12 @@ func _on_resume():
 	_toggle_pause()
 
 func _on_save():
-	print("Game Saved! (Mock)")
-	# Aquí iría la lógica real de guardado usando InventoryManager/WorldManager
+	# TODO: Implementar guardado real
+	pass
 
 func _on_load():
-	print("Game Loaded! (Mock)")
-	# Aquí iría la lógica real de carga
+	# TODO: Implementar carga real
+	pass
 
 func _on_main_menu():
 	get_tree().paused = false # IMPORTANTE: Despausar antes de cambiar escena

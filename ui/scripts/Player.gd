@@ -13,6 +13,7 @@ var current_camera_state = CameraState.FAR
 onready var camera_pivot = $CameraPivot
 
 func _ready():
+	add_to_group("player")
 	yield(get_tree(), "idle_frame")
 	var hud = get_tree().root.find_node("MainHUD", true, false)
 	if hud:
@@ -25,6 +26,10 @@ func _ready():
 		hud.connect("torch_pressed", self, "_on_torch_pressed")
 		hud.connect("action_pressed", self, "_on_action_pressed")
 		self.hud_ref = hud # Guardar referencia para actualizar botón
+		hud.set_health(health) # Initialize Health full
+		hud.set_hydration(hydration) # Initialize HUD full
+	
+	dnc_ref = get_parent().get_node_or_null("DayNightCycle")
 	
 	# Asegurar que la cámara inicie recta y sin inclinación
 	# Asegurar que la cámara inicie recta y sin inclinación
@@ -34,6 +39,8 @@ func _ready():
 	
 	_init_reins()
 	update_camera_settings()
+	
+	wm = get_tree().root.find_node("WorldManager", true, false)
 
 var hud_ref = null
 var is_sprinting = false
@@ -42,6 +49,11 @@ var milking_target_cow = null
 var current_target_tree_mmi = null
 var current_target_tree_idx = -1
 var _was_near_tree = false
+var wm = null
+var health = 1.0
+var hydration = 1.0 # Hydration starts full (1.0 = 100%)
+var max_hydration = 1.0
+var dnc_ref = null # Reference to DayNightCycle
 
 
 # --- SISTEMA DE RIENDAS ---
@@ -117,7 +129,6 @@ func _create_torch():
 	torch_node.add_child(fire_mesh)
 
 func _on_torch_pressed():
-	print("DEBUG: Señal TORCH recibida en Player")
 	torch_active = !torch_active
 	if torch_node:
 		torch_node.visible = torch_active
@@ -177,7 +188,28 @@ func _process(_delta):
 				if mat is ShaderMaterial:
 					mat.set_shader_param("player_pos", global_transform.origin)
 	
-	# 3. DETECCIÓN DE ORDEÑO (MILK)
+	# 3. LOGICA DE HIDRATACION (Meticulosa)
+	if dnc_ref:
+		# Depleción: 100% en 2 días.
+		# duracion_dia = dnc_ref.cycle_duration_minutes * 60 segundos
+		# tiempo_total = duracion_dia * 2
+		var day_sec = dnc_ref.cycle_duration_minutes * 60.0
+		var total_depletion_time = day_sec * 2.0
+		if total_depletion_time > 0:
+			var depletion_per_sec = 1.0 / total_depletion_time
+			hydration = max(0.0, hydration - depletion_per_sec * _delta)
+			
+			if hud_ref:
+				hud_ref.set_hydration(hydration)
+			
+			if hydration <= 0:
+				# Daño: 100% de salud en 0.5 días (12 horas in-game pierdes toda la vida)
+				var damage_per_sec = 1.0 / (day_sec * 0.5)
+				health = max(0.0, health - damage_per_sec * _delta)
+				if hud_ref:
+					hud_ref.set_health(health)
+	
+	# 4. DETECCIÓN DE ORDEÑO (MILK)
 	if hud_ref:
 		_milk_check_tick += 1
 		if _milk_check_tick >= 10: # Cada 10 frames es suficiente
@@ -196,7 +228,7 @@ func _process(_delta):
 					can_milk = true
 					break
 			
-			# --- DETECCION DE ARBOLES ---
+			# --- DETECCION DE ARBOLES (OPTIMIZADA) ---
 			var can_wood = false
 			current_target_tree_mmi = null
 			current_target_tree_idx = -1
@@ -204,17 +236,32 @@ func _process(_delta):
 			if not can_milk:
 				var tree_mmis = get_tree().get_nodes_in_group("tree_mmi")
 				var closest_dist = 7.0 # Rango máximo
+				var my_pos = global_transform.origin
+				
 				for mmi in tree_mmis:
+					# OPTIMIZACIÓN: Pre-check - Si el MMI está muy lejos, saltarlo
+					var mmi_dist = my_pos.distance_to(mmi.global_transform.origin)
+					if mmi_dist > 100.0: # Los MMI pueden tener árboles hasta ~75m del centro
+						continue
+						
 					if mmi is MultiMeshInstance and mmi.multimesh:
 						var mm = mmi.multimesh
-						for i in range(mm.instance_count):
+						# OPTIMIZACIÓN: Limitar búsqueda a los primeros 30 árboles por MMI
+						var max_check = min(mm.instance_count, 30)
+						for i in range(max_check):
 							var itf = mmi.global_transform * mm.get_instance_transform(i)
-							var dist = global_transform.origin.distance_to(itf.origin)
+							var dist = my_pos.distance_to(itf.origin)
 							if dist < closest_dist:
 								closest_dist = dist
 								can_wood = true
 								current_target_tree_mmi = mmi
 								current_target_tree_idx = i
+								# Early exit si encontramos uno muy cerca
+								if dist < 2.5:
+									break
+					# Early exit si ya encontramos un árbol cercano
+					if can_wood and closest_dist < 2.5:
+						break
 
 			# Actualizar estados persistentes para los botones
 			_was_near_cow = can_milk
@@ -398,7 +445,37 @@ func _physics_process(delta):
 	if look_dir.length() > 0.05:
 		camera_pivot.rotate_y(-look_dir.x * rotation_speed * delta)
 		var target_pitch = camera_pivot.rotation_degrees.x - look_dir.y * rotation_speed * delta * 40
-		camera_pivot.rotation_degrees.x = clamp(target_pitch, -60, 30)
+		# COLLISION CHECK: Prevent camera from going underground
+		var clamped_pitch = clamp(target_pitch, -60, 30)
+		
+		if wm and wm.has_method("get_terrain_height_at") and current_camera_state != CameraState.FIRST_PERSON:
+			var cam_dist = $CameraPivot/Camera.translation.z
+			var pivot_h = camera_pivot.global_transform.origin.y
+			var cam_local_y = -sin(deg2rad(clamped_pitch)) * cam_dist
+			var pred_cam_y = pivot_h + cam_local_y
+			
+			# Predecir posición global X/Z (Aproximada, asumiendo que el pitch no cambia X/Z drásticamente para este check de altura)
+			# La cámara está detrás, así que X/Z dependen del YAW del pivot
+			var yaw = camera_pivot.global_transform.basis.get_euler().y
+			var cam_offset_flat = Vector3(0, 0, cam_dist * cos(deg2rad(clamped_pitch))).rotated(Vector3.UP, yaw)
+			var pred_cam_pos = camera_pivot.global_transform.origin + cam_offset_flat
+			
+			var ground_h = wm.get_terrain_height_at(pred_cam_pos.x, pred_cam_pos.z)
+			var safe_h = ground_h + 0.5 # Mantener 0.5m sobre el suelo
+			
+			if pred_cam_y < safe_h:
+				# La cámara choca. Calcular el pitch máximo permitido.
+				# pivot_h - sin(pitch)*dist = safe_h
+				# sin(pitch) = (pivot_h - safe_h) / dist
+				var val = (pivot_h - safe_h) / cam_dist
+				val = clamp(val, -1.0, 1.0)
+				var max_pitch = rad2deg(asin(val))
+				
+				# Si el pitch actual es mayor que el max (causa bajada), lo limitamos
+				if clamped_pitch > max_pitch:
+					clamped_pitch = max_pitch
+		
+		camera_pivot.rotation_degrees.x = clamped_pitch
 
 	# ------------------------------------------------------------------
 	# LOGICA DE JINETE (CABALLO)
@@ -495,7 +572,6 @@ func try_mount_horse():
 			# El caballo está lejos, lo llamamos
 			if nearest_horse.has_method("call_to_player"):
 				nearest_horse.call_to_player(self)
-				print("Caballo llamado: está a ", min_dist, " metros")
 
 func mount(horse_node):
 	if is_riding: return
@@ -629,10 +705,8 @@ func _finish_woodcutting():
 				var mm = child.multimesh
 				if target_idx >= 0 and target_idx < mm.instance_count:
 					var tf = mm.get_instance_transform(target_idx)
-					tf = tf.scaled(Vector3.ZERO) # Escala 0 = Invisible e inalcanzable
+					tf = tf.scaled(Vector3.ZERO)
 					mm.set_instance_transform(target_idx, tf)
-		
-		print("DEBUG: Árbol individual [", target_idx, "] eliminado de forma aislada")
 
 	# AGREGAR MADERA
 	if has_node("/root/InventoryManager"):
@@ -682,9 +756,8 @@ func _finish_milking():
 	if $WalkAnimator.has_method("set_milking"):
 		$WalkAnimator.set_milking(false)
 		
-	# AGREGAR LECHE AL INVENTARIO REAL
+	# Agregar leche al inventario
 	if has_node("/root/InventoryManager"):
 		get_node("/root/InventoryManager").add_item("milk", 1)
-		print("DEBUG: +1 Leche agregada al inventario")
 	
 	milking_target_cow = null

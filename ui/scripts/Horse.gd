@@ -431,14 +431,10 @@ func call_to_player(p_node):
 
 func interact(player_node):
 	if is_ridden:
-		return # Ya montado
+		return
 	
-	print("Caballo: Jugador montando")
 	is_ridden = true
 	rider = player_node
-	
-	# El jugador se encargará de posicionarse, o lo hacemos aquí
-	# Aquí solo marcamos estado
 
 func dismount():
 	is_ridden = false
