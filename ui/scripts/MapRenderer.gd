@@ -2,7 +2,7 @@ extends Control
 
 # Configuración del Minimapa
 export var zoom_level = 5.0 # Tiles por unidad de mapa
-export var map_size_tiles = 64 # Radio de visualización en tiles (ej. 128x128 tiles)
+export var map_size_tiles = 16 # Radio de visualización en tiles (ej. 32x32 tiles)
 
 onready var player = get_tree().root.get_node_or_null("Main3D/Player")
 onready var world = get_tree().root.get_node_or_null("Main3D/WorldManager")
@@ -16,6 +16,32 @@ const COL_SNOW = Color(0.95, 0.95, 1.0)
 const COL_ROAD = Color(0.6, 0.5, 0.4)
 const COL_SETTLEMENT = Color(0.8, 0.4, 0.1)
 const COL_PLAYER = Color(1.0, 0.0, 0.0)
+const COL_BASE = Color(0.2, 0.6, 1.0)
+const COL_MARKET = Color(1.0, 0.8, 0.2)
+const COL_FAIR = Color(0.2, 0.8, 0.5)
+const COL_MINE = Color(0.7, 0.7, 0.8)
+
+var last_update_pos = Vector3.ZERO
+var last_update_time = 0.0
+var initial_map_size = 16.0
+
+func _ready():
+	# Guardar el tamaño original para que sea el límite de "Zoom Out"
+	initial_map_size = map_size_tiles
+	
+	# Conecta el slider si existe
+	var slider = get_parent().get_node_or_null("ZoomSlider")
+	if slider:
+		# Configurar el slider dinámicamente
+		slider.min_value = 0
+		slider.max_value = initial_map_size - 6.0 # Zoom in extremo hasta 6 tiles de radio
+		slider.value = 0 # Empezamos en el tamaño inicial (16 tiles)
+		slider.connect("value_changed", self, "_on_zoom_changed")
+
+func _on_zoom_changed(v):
+	# map_size_tiles disminuye al subir el slider (Zoom In)
+	map_size_tiles = int(initial_map_size - v)
+	update()
 
 func _process(_delta):
 	# Solo actualizar si es visible
@@ -42,10 +68,6 @@ func _process(_delta):
 			last_update_time = current_time
 			update() # Redraw overlay (player, POIs)
 	
-var last_update_pos = Vector3.ZERO
-var last_update_time = 0.0
-
-
 func _draw():
 	if not world or not player: return
 	
@@ -58,16 +80,19 @@ func _draw():
 	# En lugar de pixel a pixel, dibujamos círculos/rects grandes o usamos un shader?
 	# Mejor: Iterar tiles visibles (son ~64x64 tiles)
 	
-	var start_x = int(world.get_tile_coords(p_pos).x) - map_size_tiles
-	var end_x = int(world.get_tile_coords(p_pos).x) + map_size_tiles
-	var start_z = int(world.get_tile_coords(p_pos).y) - map_size_tiles
-	var end_z = int(world.get_tile_coords(p_pos).y) + map_size_tiles
+	var p_tile = world.get_tile_coords(p_pos)
 	
-	# STEP optimizado para no dibujar 128*128 rects (16k llamadas)
-	# Dibujamos grupos de 4x4 tiles si el zoom es lejano
-	# OPTIMIZACIÓN QUIRÚRGICA: Step 4 reduce el loop 4 veces más (x16 factor de área)
-	# Mantiene calidad suficiente para móviles pero vuela en rendimiento
-	var step = 4
+	# STEP DINÁMICO: Mayor detalle al hacer zoom in
+	var step = 1
+	if map_size_tiles > 80: step = 8
+	elif map_size_tiles > 40: step = 4
+	elif map_size_tiles > 20: step = 2
+	
+	# ANCLAJE DE REJILLA: Evita que los cuadros "bailen" al moverse
+	var start_x = floor((p_tile.x - map_size_tiles) / step) * step
+	var end_x = ceil((p_tile.x + map_size_tiles) / step) * step
+	var start_z = floor((p_tile.y - map_size_tiles) / step) * step
+	var end_z = ceil((p_tile.y + map_size_tiles) / step) * step
 	
 	for x in range(start_x, end_x, step):
 		for z in range(start_z, end_z, step):
@@ -128,32 +153,147 @@ func _draw():
 	
 	# 2. Dibujar Vías (Curvas de Bezier reales)
 	# Buscar asentamientos visibles en este rango
-	var sc_start_x = floor(start_x / float(world.SUPER_CHUNK_SIZE))
-	var sc_end_x = floor(end_x / float(world.SUPER_CHUNK_SIZE))
-	var sc_start_z = floor(start_z / float(world.SUPER_CHUNK_SIZE))
-	var sc_end_z = floor(end_z / float(world.SUPER_CHUNK_SIZE))
+	var sc_start_x = floor(start_x / float(RoadSystem.SUPER_CHUNK_SIZE))
+	var sc_end_x = floor(end_x / float(RoadSystem.SUPER_CHUNK_SIZE))
+	var sc_start_z = floor(start_z / float(RoadSystem.SUPER_CHUNK_SIZE))
+	var sc_end_z = floor(end_z / float(RoadSystem.SUPER_CHUNK_SIZE))
 	
 	for sc_x in range(sc_start_x - 1, sc_end_x + 1):
 		for sc_z in range(sc_start_z - 1, sc_end_z + 1):
 			# Obtener asentamiento
-			var sett_tile = world.get_settlement_coords(sc_x, sc_z)
+			var sett_tile = world.road_system.get_settlement_coords(sc_x, sc_z)
 			var sett_pos = Vector3(sett_tile.x * world.tile_size, 0, sett_tile.y * world.tile_size)
 			
 			# --- DRAW HORIZONTAL ROAD (East) ---
-			var next_sett_tile = world.get_settlement_coords(sc_x + 1, sc_z)
+			var next_sett_tile = world.road_system.get_settlement_coords(sc_x + 1, sc_z)
 			_draw_road_curve(sett_tile, next_sett_tile, center, scale_factor, p_pos, true)
 			
 			# --- DRAW VERTICAL ROAD (South) ---
-			if world._has_vertical_road(sc_x, sc_z):
-				var south_sett_tile = world.get_settlement_coords(sc_x, sc_z + 1)
+			if world.road_system._has_vertical_road(sc_x, sc_z):
+				var south_sett_tile = world.road_system.get_settlement_coords(sc_x, sc_z + 1)
 				_draw_road_curve(sett_tile, south_sett_tile, center, scale_factor, p_pos, false)
 			
 			# Dibujar Asentamiento (Rectángulo + Icono)
 			var rel_s = sett_pos - p_pos
 			var s_screen = center + Vector2(rel_s.x, rel_s.z) * scale_factor
 			var s_size = 66.0 * scale_factor # Tamaño real del asentamiento (66m)
-			draw_rect(Rect2(s_screen - Vector2(s_size/2, s_size/2), Vector2(s_size, s_size)), COL_SETTLEMENT, false, 2.0)
-			draw_circle(s_screen, s_size/2, COL_SETTLEMENT.lightened(0.2))
+			
+			# Detectar si es un asentamiento especial
+			var poi_type = ""
+			var s_col = COL_SETTLEMENT
+			if sett_tile == Vector2(4, 0):
+				poi_type = "market"
+				s_col = COL_MARKET
+			elif sett_tile == Vector2(-4, 0):
+				poi_type = "fair"
+				s_col = COL_FAIR
+			elif sett_tile == Vector2(0, -4):
+				poi_type = "mine"
+				s_col = COL_MINE
+			
+			draw_rect(Rect2(s_screen - Vector2(s_size/2, s_size/2), Vector2(s_size, s_size)), s_col, false, 2.0)
+			draw_circle(s_screen, s_size/2, s_col.lightened(0.2))
+			
+			# Dibujar Icono si es especial
+			if poi_type != "":
+				_draw_poi_icon(s_screen, poi_type, s_col)
+
+	# 3. Dibujar Punto de Inicio (BASE)
+	var base_pos = Vector3.ZERO
+	var rel_b = base_pos - p_pos
+	var b_screen = center + Vector2(rel_b.x, rel_b.z) * scale_factor
+	var b_size = 35.0 * scale_factor
+	
+	if b_screen.x > 0 and b_screen.x < rect_size.x and b_screen.y > 0 and b_screen.y < rect_size.y:
+		_draw_poi_icon(b_screen, "base", COL_BASE)
+
+	# 4. DIBUJAR JUGADOR (Siempre encima de todo)
+	var p_screen = center
+	var mesh_inst = player.get_node_or_null("MeshInstance")
+	var rot = 0.0
+	if mesh_inst:
+		var fwd_3d = -mesh_inst.global_transform.basis.z 
+		var fwd_2d = Vector2(fwd_3d.x, fwd_3d.z)
+		rot = fwd_2d.angle() + PI/2 + PI
+	else:
+		rot = player.rotation.y
+		
+	var p_size = 10.0
+	var p_points = PoolVector2Array([
+		p_screen + Vector2(0, -p_size * 1.2),
+		p_screen + Vector2(-p_size*0.7, p_size * 0.8),
+		p_screen + Vector2(p_size*0.7, p_size * 0.8)
+	])
+	
+	for i in range(p_points.size()):
+		p_points[i] = rotate_point(p_points[i], p_screen, rot)
+		
+	draw_colored_polygon(p_points, COL_PLAYER)
+
+func _draw_poi_icon(pos, type, col):
+	var size = 12.0
+	var dark = Color(0, 0, 0, 0.7)
+	match type:
+		"base":
+			# ICONO DE CASA (Base)
+			var wall_w = size * 1.4
+			var wall_h = size * 1.0
+			# Paredes
+			draw_rect(Rect2(pos + Vector2(-wall_w/2, 0), Vector2(wall_w, wall_h)), col)
+			# Techo triangular
+			var roof = PoolVector2Array([
+				pos + Vector2(0, -size * 1.2),
+				pos + Vector2(size, 0),
+				pos + Vector2(-size, 0)
+			])
+			draw_colored_polygon(roof, col.lightened(0.2))
+			# Puerta
+			draw_rect(Rect2(pos + Vector2(-size*0.2, size*0.4), Vector2(size*0.4, size*0.6)), dark)
+			# Chimenea
+			draw_rect(Rect2(pos + Vector2(size*0.4, -size*0.8), Vector2(size*0.3, size*0.6)), col.darkened(0.2))
+			
+		"market":
+			# ICONO DE PUESTO (Mercado)
+			# Mesa/Mostrador
+			draw_rect(Rect2(pos + Vector2(-size, size*0.2), Vector2(size*2.0, size*0.3)), col)
+			# Postes
+			for x in [-size*0.8, size*0.8]:
+				draw_rect(Rect2(pos + Vector2(x, -size*0.6), Vector2(size*0.15, size*0.8)), col.darkened(0.3))
+			# Toldo Rayado
+			for i in range(3):
+				var stripe_col = col if i % 2 == 0 else Color(1, 1, 1)
+				draw_rect(Rect2(pos + Vector2(-size + i*size*0.7, -size*1.2), Vector2(size*0.7, size*0.6)), stripe_col)
+				
+		"fair":
+			# ICONO DE CRÁNEO/TORO (Feria Ganadera)
+			# Cara (U)
+			draw_circle(pos + Vector2(0, size*0.2), size*0.5, col)
+			# Cuernos (V invertida curva)
+			var horn_l = PoolVector2Array([pos + Vector2(0, -size*0.2), pos + Vector2(-size*1.2, -size*0.8), pos + Vector2(-size, -size*0.2)])
+			var horn_r = PoolVector2Array([pos + Vector2(0, -size*0.2), pos + Vector2(size*1.2, -size*0.8), pos + Vector2(size, -size*0.2)])
+			draw_colored_polygon(horn_l, col.lightened(0.3))
+			draw_colored_polygon(horn_r, col.lightened(0.3))
+			# Ojos
+			draw_circle(pos + Vector2(-size*0.2, size*0.1), size*0.1, dark)
+			draw_circle(pos + Vector2(size*0.2, size*0.1), size*0.1, dark)
+			
+		"mine":
+			# ICONO DE PICO CRUZADO (Mina)
+			# Mango (Diagonal)
+			var handle = PoolVector2Array([
+				pos + Vector2(-size, size), pos + Vector2(size, -size),
+				pos + Vector2(size*1.2, -size*0.8), pos + Vector2(-size*0.8, size*1.2)
+			])
+			draw_colored_polygon(handle, Color(0.5, 0.3, 0.1)) # Madera
+			# Cabeza del pico (Curva metálica)
+			var head = PoolVector2Array([
+				pos + Vector2(-size*0.5, -size*1.2),
+				pos + Vector2(size*1.5, size*0.8),
+				pos + Vector2(size*0.8, size*1.5),
+				pos + Vector2(-size*1.2, -size*0.5)
+			])
+			draw_colored_polygon(head, col) # Metal
+			draw_polyline(head, Color(1, 1, 1, 0.5), 1.0, true)
 
 func _draw_road_curve(t_start, t_end, center, scale_factor, p_pos, is_horizontal):
 	var tile_size = world.tile_size
@@ -162,8 +302,6 @@ func _draw_road_curve(t_start, t_end, center, scale_factor, p_pos, is_horizontal
 	var end_p = Vector3.ZERO
 	var cp1 = Vector3.ZERO
 	var cp2 = Vector3.ZERO
-	var settlement_seed = world.settlement_seed
-	
 	if is_horizontal:
 		start_p = Vector3(t_start.x * tile_size + 33.0, 0, t_start.y * tile_size)
 		end_p = Vector3(t_end.x * tile_size - 33.0, 0, t_end.y * tile_size)
@@ -174,18 +312,18 @@ func _draw_road_curve(t_start, t_end, center, scale_factor, p_pos, is_horizontal
 		var seed_x = int(t_start.x) + int(t_end.x)
 		var seed_z = int(t_start.y) + int(t_end.y)
 		var curv_rng = RandomNumberGenerator.new()
-		curv_rng.seed = (seed_x * 49297) ^ (seed_z * 91823) ^ settlement_seed
+		curv_rng.seed = (seed_x * 49297) ^ (seed_z * 91823) ^ world.road_system.settlement_seed
 		var curve_z = curv_rng.randf_range(-40.0, 40.0)
 		
 		cp1 = start_p + Vector3(handle_len, 0, curve_z)
 		cp2 = end_p - Vector3(handle_len, 0, -curve_z)
 	else:
 		# Copy Logic from WorldManager
-		var sc_x = floor(t_start.x / world.SUPER_CHUNK_SIZE)
-		var sc_z = floor(t_start.y / world.SUPER_CHUNK_SIZE)
+		var sc_x = floor(t_start.x / RoadSystem.SUPER_CHUNK_SIZE)
+		var sc_z = floor(t_start.y / RoadSystem.SUPER_CHUNK_SIZE)
 		
 		# Assuming t_start passed here is the "upper" settlement tile
-		var s_east = world.get_settlement_coords(sc_x + 1, sc_z)
+		var s_east = world.road_system.get_settlement_coords(sc_x + 1, sc_z)
 		
 		var h_start = Vector3(t_start.x * tile_size + 33.0, 0, t_start.y * tile_size)
 		var h_end = Vector3(s_east.x * tile_size - 33.0, 0, s_east.y * tile_size)
@@ -200,7 +338,7 @@ func _draw_road_curve(t_start, t_end, center, scale_factor, p_pos, is_horizontal
 		var seed_x_v = int(t_start.x)
 		var seed_z_v = int(t_start.y)
 		var curv_rng_v = RandomNumberGenerator.new()
-		curv_rng_v.seed = (seed_x_v * 73821) ^ (seed_z_v * 19283) ^ settlement_seed
+		curv_rng_v.seed = (seed_x_v * 73821) ^ (seed_z_v * 19283) ^ world.road_system.settlement_seed
 		var curve_x = curv_rng_v.randf_range(-40.0, 40.0)
 		
 		cp1 = start_p + Vector3(curve_x, 0, handle_len)
@@ -215,41 +353,6 @@ func _draw_road_curve(t_start, t_end, center, scale_factor, p_pos, is_horizontal
 		curve_points.append(center + Vector2(rel_p.x, rel_p.z) * scale_factor)
 	
 	draw_polyline(curve_points, COL_ROAD, 4.0, true)
-
-	
-	# 3. Dibujar Jugador
-	var p_screen = center # El jugador siempre está en el centro relativo de la proyección
-	
-	# Obtener rotación visual real (MeshInstance)
-	# El cuerpo físico (KinematicBody) no rota, solo la malla.
-	var mesh_inst = player.get_node_or_null("MeshInstance")
-	var rot = 0.0
-	
-	if mesh_inst:
-		# Usamos vector forward global para ser robustos
-		var fwd_3d = -mesh_inst.global_transform.basis.z 
-		var fwd_2d = Vector2(fwd_3d.x, fwd_3d.z)
-		# Ajustar ángulo: Vector2.angle() es 0 al Este (+X).
-		# Nuestro dibujo apunta al Norte/-Y (Up). 
-		# Para apuntar al Este (+X), necesitamos rotar +90 (+PI/2).
-		# FIX: El usuario reportó que estaba invertido, así que sumamos 180 grados (+PI).
-		rot = fwd_2d.angle() + PI/2 + PI
-	else:
-		rot = player.rotation.y
-		
-	# Triangulo
-	var p_size = 10.0
-	var p_points = PoolVector2Array([
-		p_screen + Vector2(0, -p_size * 1.2), # Punta más larga
-		p_screen + Vector2(-p_size*0.7, p_size * 0.8),
-		p_screen + Vector2(p_size*0.7, p_size * 0.8)
-	])
-	
-	# Rotar triangulo según rotación del jugador
-	for i in range(p_points.size()):
-		p_points[i] = rotate_point(p_points[i], p_screen, rot)
-		
-	draw_colored_polygon(p_points, COL_PLAYER)
 
 func rotate_point(point, pivot, angle):
 	var rel = point - pivot

@@ -55,9 +55,8 @@ func _ready():
 	if skel_node:
 		self.skeleton = get_path_to(skel_node)
 	
-	# FIX SOMBRAS MÓVILES: Evitar auto-sombras internas en partes del cuerpo
-	# SHADOW_CASTING_SETTING_ON = proyecta sombras normales pero puede recibirlas (causa artefactos)
-	# SHADOW_CASTING_SETTING_SHADOWS_ONLY = solo proyecta, no recibe (limpio para móviles)
+	# CORRECCIÓN DE VISIBILIDAD: El modo anterior lo hacía invisible.
+	# Ahora es visible y, gracias al shader 'unshaded', no tiene manchas.
 	self.cast_shadow = GeometryInstance.SHADOW_CASTING_SETTING_ON
 
 func _setup_materials():
@@ -80,31 +79,65 @@ func _setup_materials():
 		"Hands": ["HandL", "HandR"]
 	}
 	
-	var f = File.new()
 	for group_name in part_groups.keys():
 		var tex_path = "res://assets/textures/player/" + group_name.to_lower() + ".png"
 		var tex = null
-		if f.file_exists(tex_path):
+		
+		if ResourceLoader.exists(tex_path):
 			tex = load(tex_path)
 		
+		# FALLBACKS PARA TEXTURAS FALTANTES (Nose, Hands, etc)
+		if not tex:
+			if group_name == "Nose" or group_name == "Hands":
+				# Usar la de la cabeza o abdomen si no hay específica
+				var fallback_paths = [
+					"res://assets/textures/player/head.png",
+					"res://assets/textures/player/abdomen.png"
+				]
+				for p in fallback_paths:
+					if ResourceLoader.exists(p):
+						tex = load(p)
+						break
+		
+		# Si falla todo, placeholder blanco
 		if not tex: 
 			tex = _create_white_placeholder()
 
-		if OS.has_feature("Android") or OS.has_feature("iOS"):
-			var mat = SpatialMaterial.new()
-			mat.albedo_texture = tex
-			mat.roughness = 0.85
-			mat.metallic = 0.0
-			# OPTIMIZACIÓN MÓVIL: Evitar que se proyecte sombra sobre sí mismo
-			mat.flags_do_not_receive_shadows = true
-			body_materials[group_name] = mat
-		else:
-			var mat = ShaderMaterial.new()
-			mat.shader = load("res://ui/shaders/realistic_skin.shader")
-			mat.set_shader_param("skin_color", Color(1, 1, 1))
-			mat.set_shader_param("albedo_texture", tex)
-			mat.set_shader_param("roughness", 0.85)
-			body_materials[group_name] = mat
+		# Forzar el uso del ShaderMaterial en todas las plataformas para un look sólido y limpio
+		var mat = ShaderMaterial.new()
+		mat.shader = load("res://ui/shaders/realistic_skin.shader")
+		mat.set_shader_param("skin_color", Color(1, 1, 1))
+		mat.set_shader_param("albedo_texture", tex)
+		body_materials[group_name] = mat
+
+var _dnc_ref = null
+var _update_timer = 0.0
+
+func _process(delta):
+	# OPTIMIZACIÓN: Solo actualizar color cada 0.2 segundos para ahorrar batería
+	_update_timer += delta
+	if _update_timer < 0.2: return
+	_update_timer = 0.0
+	
+	if not _dnc_ref:
+		_dnc_ref = get_tree().root.find_node("DayNightCycle", true, false)
+	
+	if _dnc_ref:
+		# Obtener el color de la luz del sol/ambiente actual
+		var sun_node = _dnc_ref.sun
+		if sun_node:
+			# Calculamos un factor de brillo basado en la energía del sol
+			# day_phase es 0 en noche, 1 en día
+			var energy = sun_node.light_energy
+			var base_brightness = clamp(energy * 1.5, 0.2, 1.0)
+			
+			# Sincronizar con el color del sol pero permitir visibilidad nocturna
+			var final_color = sun_node.light_color * base_brightness
+			
+			# Aplicar a TODOS los materiales del cuerpo
+			for mat in body_materials.values():
+				if mat is ShaderMaterial:
+					mat.set_shader_param("sun_color", final_color)
 
 func _create_white_placeholder():
 	var img = Image.new()

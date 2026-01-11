@@ -18,10 +18,34 @@ _global_script_classes=[ {
 "class": "Horse",
 "language": "GDScript",
 "path": "res://ui/scripts/Horse.gd"
+}, {
+"base": "Node",
+"class": "PlayerActions",
+"language": "GDScript",
+"path": "res://ui/scripts/PlayerActions.gd"
+}, {
+"base": "Node",
+"class": "PlayerStats",
+"language": "GDScript",
+"path": "res://ui/scripts/PlayerStats.gd"
+}, {
+"base": "Node",
+"class": "RoadSystem",
+"language": "GDScript",
+"path": "res://ui/scripts/RoadSystem.gd"
+}, {
+"base": "Node",
+"class": "StructureBuilder",
+"language": "GDScript",
+"path": "res://ui/scripts/StructureBuilder.gd"
 } ]
 _global_script_class_icons={
 "AnimalBase": "",
-"Horse": ""
+"Horse": "",
+"PlayerActions": "",
+"PlayerStats": "",
+"RoadSystem": "",
+"StructureBuilder": ""
 }
 
 [application]

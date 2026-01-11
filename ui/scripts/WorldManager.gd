@@ -13,6 +13,7 @@ var spawn_queue = []
 var noise = OpenSimplexNoise.new()
 var height_noise = OpenSimplexNoise.new()
 var biome_noise = OpenSimplexNoise.new()
+var road_system = RoadSystem.new() # Nuevo Sistema Vial Modular
 var last_player_tile = Vector2.INF
 var update_timer = 0.0
 var _lod_upgrade_timer = 0.0 # Timer para upgrades de LOD
@@ -73,8 +74,7 @@ func _ready():
 	shared_res["height_noise"] = height_noise
 	shared_res["biome_noise"] = biome_noise
 	
-	_init_settlement_seed()
-	
+	road_system.init(common_seed, tile_size)
 	setup_shared_resources()
 	
 	# 1. Calcular altura exacta del terreno en (0,0) para spawn seguro
@@ -114,7 +114,8 @@ func _ready():
 	if horse_scene:
 		var horse = horse_scene.instance()
 		add_child(horse)
-		horse.global_transform.origin = Vector3(10, 5, -10)
+		var h = get_terrain_height_at(10, -10)
+		horse.global_transform.origin = Vector3(10, h + 0.8, -10)
 		
 	var cow_scene = load("res://ui/scenes/Cow.tscn")
 	if cow_scene:
@@ -122,7 +123,8 @@ func _ready():
 		var cow1 = cow_scene.instance()
 		add_child(cow1)
 		cow1.speed = 4.0
-		cow1.global_transform.origin = Vector3(15, 5, -15)
+		var h1 = get_terrain_height_at(15, -15)
+		cow1.global_transform.origin = Vector3(15, h1 + 0.8, -15)
 		cow1.is_night_cow = true
 		cow1.night_waypoint_pos = Vector3(11.8, 2.1, 13.0) 
 		cow1.night_target_pos = Vector3(22.0, 2.1, 18.5)
@@ -131,7 +133,8 @@ func _ready():
 		var cow2 = cow_scene.instance()
 		add_child(cow2)
 		cow2.speed = 4.0
-		cow2.global_transform.origin = Vector3(-15, 5, 15)
+		var h2 = get_terrain_height_at(-15, 15)
+		cow2.global_transform.origin = Vector3(-15, h2 + 0.8, 15)
 		cow2.is_night_cow = true
 		cow2.night_waypoint_pos = Vector3(13.0, 2.1, 11.8)
 		cow2.night_target_pos = Vector3(18.5, 2.1, 22.0)
@@ -144,7 +147,9 @@ func _ready():
 			add_child(goat)
 			var angle = i * (TAU / 3.0)
 			var cluster_offset = Vector3(cos(angle), 0, sin(angle)) * 3.0
-			goat.global_transform.origin = Vector3(10, 5, 0) + cluster_offset
+			var spawn_pos = Vector3(10, 0, 0) + cluster_offset
+			var hg = get_terrain_height_at(spawn_pos.x, spawn_pos.z)
+			goat.global_transform.origin = Vector3(spawn_pos.x, hg + 0.8, spawn_pos.z)
 	
 	var chicken_scene = load("res://ui/scenes/Chicken.tscn")
 	if chicken_scene:
@@ -154,7 +159,9 @@ func _ready():
 			chicken.size_unit = 0.28
 			var angle = i * (TAU / 4.0)
 			var offset = Vector3(cos(angle), 0, sin(angle)) * 4.0
-			chicken.global_transform.origin = Vector3(-18, 2.22, 18) + offset
+			var spawn_pos = Vector3(-18, 0, 18) + offset
+			var hc = get_terrain_height_at(spawn_pos.x, spawn_pos.z)
+			chicken.global_transform.origin = Vector3(spawn_pos.x, hc + 0.5, spawn_pos.z)
 			
 			# Navegación nocturna
 			chicken.is_night_chicken = true
@@ -220,244 +227,6 @@ func _sort_by_dist(a, b):
 	return a.distance_to(p_coords) < b.distance_to(p_coords)
 
 
-# --- SETTLEMENT & ROAD LOGIC ---
-const SUPER_CHUNK_SIZE = 5 
-var settlement_seed = 0
-var road_cache = {} # Cache for segments: { "sc_x,sc_z": [ {p1, p2}, ... ] }
-var _cached_rng : RandomNumberGenerator = null # OPTIMIZACIÓN: Evitar creación constante
-
-func _init_settlement_seed():
-	settlement_seed = noise.seed + 999
-
-func get_settlement_coords(sc_x_in, sc_z_in):
-	var sc_x = int(sc_x_in)
-	var sc_z = int(sc_z_in)
-	if sc_x == 0 and sc_z == 0: return Vector2(1, 0)
-		
-	var hash_val = (sc_x * 73856093) ^ (sc_z * 19349663) ^ settlement_seed
-	var rng = RandomNumberGenerator.new()
-	rng.seed = hash_val
-	var rel_x = rng.randi_range(0, SUPER_CHUNK_SIZE - 1)
-	var rel_z = rng.randi_range(0, SUPER_CHUNK_SIZE - 1)
-	return Vector2(sc_x * SUPER_CHUNK_SIZE + rel_x, sc_z * SUPER_CHUNK_SIZE + rel_z)
-
-func _get_road_segments_cached(sc_x, sc_z):
-	var key = str(sc_x) + "," + str(sc_z)
-	if road_cache.has(key): return road_cache[key]
-	
-	var segments = []
-	# Horizontal: Prev -> Curr
-	var s_prev = get_settlement_coords(sc_x - 1, sc_z)
-	var s_curr = get_settlement_coords(sc_x, sc_z)
-	segments.append_array(_generate_road_points(s_prev, s_curr, true))
-	
-	# Horizontal: Curr -> Next
-	var s_next = get_settlement_coords(sc_x + 1, sc_z)
-	segments.append_array(_generate_road_points(s_curr, s_next, true))
-	
-	# Vertical: Up -> Current
-	if _has_vertical_road(sc_x, sc_z - 1):
-		var s_up = get_settlement_coords(sc_x, sc_z - 1)
-		segments.append_array(_generate_road_points(s_up, s_curr, false))
-		
-	# Vertical: Current -> Down
-	if _has_vertical_road(sc_x, sc_z):
-		var s_down = get_settlement_coords(sc_x, sc_z + 1)
-		segments.append_array(_generate_road_points(s_curr, s_down, false))
-	
-	road_cache[key] = segments
-	
-	# Limit cache size
-	if road_cache.size() > 50:
-		road_cache.erase(road_cache.keys()[0])
-		
-	return segments
-
-func _generate_road_points(t_start, t_end, is_horizontal):
-	var points = []
-	var start_pos = Vector3.ZERO
-	var end_pos = Vector3.ZERO
-	var cp1 = Vector3.ZERO
-	var cp2 = Vector3.ZERO
-	
-	if is_horizontal:
-		start_pos = Vector3(t_start.x * tile_size + 33.0, 0, t_start.y * tile_size)
-		end_pos = Vector3(t_end.x * tile_size - 33.0, 0, t_end.y * tile_size)
-		var dist = start_pos.distance_to(end_pos)
-		var handle_len = dist * 0.4
-		var curv_rng = RandomNumberGenerator.new()
-		curv_rng.seed = (int(t_start.x + t_end.x) * 49297) ^ (int(t_start.y + t_end.y) * 91823) ^ settlement_seed
-		var curve_z = curv_rng.randf_range(-40.0, 40.0)
-		cp1 = start_pos + Vector3(handle_len, 0, curve_z)
-		cp2 = end_pos - Vector3(handle_len, 0, -curve_z)
-	else:
-		var sc_x = floor(t_start.x / SUPER_CHUNK_SIZE)
-		var sc_z = floor(t_start.y / SUPER_CHUNK_SIZE)
-		var s_east = get_settlement_coords(sc_x + 1, sc_z)
-		var h_start = Vector3(t_start.x * tile_size + 33.0, 0, t_start.y * tile_size)
-		var h_end = Vector3(s_east.x * tile_size - 33.0, 0, s_east.y * tile_size)
-		var h_mid = (h_start + h_end) * 0.5
-		start_pos = h_mid
-		end_pos = Vector3(t_end.x * tile_size, 0, t_end.y * tile_size - 33.0)
-		var dist = start_pos.distance_to(end_pos)
-		var handle_len = dist * 0.4
-		var curv_rng_v = RandomNumberGenerator.new()
-		curv_rng_v.seed = (int(t_start.x) * 73821) ^ (int(t_start.y) * 19283) ^ settlement_seed
-		var curve_x = curv_rng_v.randf_range(-40.0, 40.0)
-		cp1 = start_pos + Vector3(curve_x, 0, handle_len)
-		cp2 = end_pos - Vector3(-curve_x, 0, handle_len)
-	
-	var steps = 12
-	var prev_p = Vector2(start_pos.x, start_pos.z)
-	for i in range(1, steps + 1):
-		var t = float(i) / steps
-		var p3 = _cubic_bezier(start_pos, cp1, cp2, end_pos, t)
-		var curr_p = Vector2(p3.x, p3.z)
-		points.append({"a": prev_p, "b": curr_p})
-		prev_p = curr_p
-	return points
-
-func is_settlement_tile(x, z):
-	var sc_x = floor(float(x) / SUPER_CHUNK_SIZE)
-	var sc_z = floor(float(z) / SUPER_CHUNK_SIZE)
-	var sett_coords = get_settlement_coords(int(sc_x), int(sc_z))
-	return int(sett_coords.x) == x and int(sett_coords.y) == z
-
-func get_road_influence(gx, gz):
-	var tile_x = floor(gx / tile_size)
-	var tile_z = floor(gz / tile_size)
-	var sc_x = floor(tile_x / SUPER_CHUNK_SIZE)
-	var sc_z = floor(tile_z / SUPER_CHUNK_SIZE)
-	
-	var segments = _get_road_segments_cached(sc_x, sc_z)
-	var min_d = 9999.0
-	var pos_2d = Vector2(gx, gz)
-	
-	for seg in segments:
-		# FAST BOUNDING BOX per segment
-		if abs(gx - seg.a.x) > 40.0 and abs(gx - seg.b.x) > 40.0: continue
-		if abs(gz - seg.a.y) > 40.0 and abs(gz - seg.b.y) > 40.0: continue
-		
-		var d = _dist_to_segment_2d_optimized(pos_2d, seg.a, seg.b)
-		if d < min_d: 
-			min_d = d
-			if min_d < 1.0: break # Early exit
-	
-	var road_width = 12.0
-	var falloff = 6.0
-	
-	# Detectar si estamos en el borde para los árboles
-	var is_on_edge = false
-	var tree_edge_dist = 14.5 # Justo en el borde de la carretera
-	if abs(min_d - tree_edge_dist) < 1.5:
-		is_on_edge = true
-	
-	if min_d < (road_width + falloff):
-		var w = 1.0 - clamp((min_d - road_width) / falloff, 0.0, 1.0)
-		return { "is_road": true, "weight": w, "height": 2.1, "is_edge": is_on_edge, "dist": min_d }
-	
-	return { "is_road": false, "weight": 0.0, "height": 0.0, "is_edge": is_on_edge, "dist": min_d }
-
-func _has_vertical_road(sc_x, sc_z):
-	# Deterministic check: 40% chance of vertical road starting from this chunk southwards
-	var hash_val = (int(sc_x) * 3344921) ^ (int(sc_z) * 8192371) ^ settlement_seed
-	return (hash_val % 100) < 40
-
-func _dist_to_road_segment(gx, gz, t_start, t_end, is_horizontal):
-	# t_start, t_end are TILE coordinates
-	
-	var start_pos = Vector3.ZERO
-	var end_pos = Vector3.ZERO
-	var cp1 = Vector3.ZERO
-	var cp2 = Vector3.ZERO
-	
-	# OPTIMIZACIÓN: Reusar RNG en lugar de crear uno nuevo cada llamada
-	if not _cached_rng:
-		_cached_rng = RandomNumberGenerator.new()
-	
-	if is_horizontal:
-		start_pos = Vector3(t_start.x * tile_size + 33.0, 0, t_start.y * tile_size)
-		end_pos = Vector3(t_end.x * tile_size - 33.0, 0, t_end.y * tile_size)
-		
-		var dist = start_pos.distance_to(end_pos)
-		var handle_len = dist * 0.4
-		
-		var seed_x = int(t_start.x) + int(t_end.x)
-		var seed_z = int(t_start.y) + int(t_end.y)
-		_cached_rng.seed = (seed_x * 49297) ^ (seed_z * 91823) ^ settlement_seed
-		var curve_z = _cached_rng.randf_range(-40.0, 40.0)
-		
-		cp1 = start_pos + Vector3(handle_len, 0, curve_z)
-		cp2 = end_pos - Vector3(handle_len, 0, -curve_z)
-	else:
-		var sc_x = floor(t_start.x / SUPER_CHUNK_SIZE)
-		var sc_z = floor(t_start.y / SUPER_CHUNK_SIZE)
-		var s_east = get_settlement_coords(sc_x + 1, sc_z)
-		var h_start = Vector3(t_start.x * tile_size + 33.0, 0, t_start.y * tile_size)
-		var h_end = Vector3(s_east.x * tile_size - 33.0, 0, s_east.y * tile_size)
-		var h_mid = (h_start + h_end) * 0.5
-		
-		start_pos = h_mid
-		end_pos = Vector3(t_end.x * tile_size, 0, t_end.y * tile_size - 33.0)
-		
-		var dist = start_pos.distance_to(end_pos)
-		var handle_len = dist * 0.4
-		
-		var seed_x_v = int(t_start.x)
-		var seed_z_v = int(t_start.y)
-		_cached_rng.seed = (seed_x_v * 73821) ^ (seed_z_v * 19283) ^ settlement_seed
-		var curve_x = _cached_rng.randf_range(-40.0, 40.0)
-		
-		cp1 = start_pos + Vector3(curve_x, 0, handle_len)
-		cp2 = end_pos - Vector3(-curve_x, 0, handle_len)
-	
-	# --- OPTIMIZACIÓN EXTREMA: Bounding Box check ---
-	var min_x = min(min(start_pos.x, end_pos.x), min(cp1.x, cp2.x)) - 30.0
-	var max_x = max(max(start_pos.x, end_pos.x), max(cp1.x, cp2.x)) + 30.0
-	var min_z = min(min(start_pos.z, end_pos.z), min(cp1.z, cp2.z)) - 30.0
-	var max_z = max(max(start_pos.z, end_pos.z), max(cp1.z, cp2.z)) + 30.0
-	
-	if gx < min_x or gx > max_x or gz < min_z or gz > max_z:
-		return 9999.0
-	
-	# Sample distance
-	var min_d = 9999.0
-	var pos = Vector2(gx, gz)
-	var steps = 12 # Reducido de 15 a 12 (Suficiente para curvas suaves)
-	var prev_p = Vector2(start_pos.x, start_pos.z)
-	
-	for i in range(1, steps + 1):
-		var t = float(i) / steps
-		var p3 = _cubic_bezier(start_pos, cp1, cp2, end_pos, t)
-		var curr_p = Vector2(p3.x, p3.z)
-		
-		var d = _dist_to_segment_2d_optimized(pos, prev_p, curr_p)
-		if d < min_d: min_d = d
-		prev_p = curr_p
-		if min_d < 2.0: break # Early out si ya estamos en el medio de la carretera
-		
-	return min_d
-
-func _dist_to_segment_2d_optimized(p, a, b):
-	var pa = p - a
-	var ba = b - a
-	var h = clamp(pa.dot(ba) / ba.dot(ba), 0.0, 1.0)
-	return (pa - ba * h).length()
-
-
-func _cubic_bezier(p0, p1, p2, p3, t):
-	var t2 = t * t
-	var t3 = t2 * t
-	var mt = 1.0 - t
-	var mt2 = mt * mt
-	var mt3 = mt2 * mt
-	return p0 * mt3 + p1 * (3.0 * mt2 * t) + p2 * (3.0 * mt * t2) + p3 * t3
-
-func _dist_to_segment_2d(p, a, b):
-	var pa = Vector2(p.x - a.x, p.z - a.z)
-	var ba = Vector2(b.x - a.x, b.z - a.z)
-	var h = clamp(pa.dot(ba) / ba.dot(ba), 0.0, 1.0)
-	return pa.distance_to(ba * h)
 
 func setup_shared_resources():
 	# OPTIMIZACIÓN: preload = carga en compilación (instantáneo)
@@ -603,7 +372,7 @@ func spawn_tile(x, z):
 	tile.visible = true
 	add_child(tile)
 	
-	var is_spawn = (x == 0 and z == 0) or is_settlement_tile(x, z)
+	var is_spawn = (x == 0 and z == 0) or road_system.is_settlement_tile(x, z)
 	
 	# Always spawn as LOW LOD for speed. Will upgrade later.
 	# Enum: LOD.LOW = 1
@@ -653,8 +422,15 @@ func get_terrain_height_at(x, z):
 		var blend = clamp(1.0 - (dist - 33.0) / 20.0, 0.0, 1.0)
 		y = lerp(y, 2.0, blend)
 		
-	var road_info = get_road_influence(x, z)
+	var road_info = road_system.get_road_influence(x, z)
 	if road_info.is_road:
 		y = lerp(y, road_info.height, road_info.weight)
 		
 	return y
+
+# --- PROXY METHODS (Para compatibilidad con GroundTile y otros) ---
+func is_settlement_tile(x: int, z: int) -> bool:
+	return road_system.is_settlement_tile(x, z)
+
+func get_road_influence(gx: float, gz: float) -> Dictionary:
+	return road_system.get_road_influence(gx, gz)

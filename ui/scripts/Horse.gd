@@ -394,40 +394,45 @@ func _update_eating_weight(delta):
 	eating_weight = lerp(eating_weight, target_eat_w, lerp_v * delta)
 
 func _process_call_movement(delta):
-	if not calling_player: return
+	if not calling_player:
+		return
 	
 	var target_pos = calling_player.global_transform.origin
-	# Offset para ubicarse al lado (a la derecha del jugador)
-	var offset = calling_player.global_transform.basis.x * 1.8
-	var arrival_pos = target_pos + offset
+	var p_basis = calling_player.global_transform.basis
+	# Offset to side
+	var arrival_pos = target_pos + p_basis.x * 1.8
 	
 	var to_target = arrival_pos - global_transform.origin
 	var dist = to_target.length()
 	
 	if dist < call_arrival_dist:
-		calling_player = null # Llegada
+		calling_player = null
 		velocity.x = 0
 		velocity.z = 0
+		rider_sprinting = false # Reset sprinting state on arrival
 		return
 	
 	var dir = to_target.normalized()
 	
-	# Rotación suave hacia el jugador
+	# Rotation faster when called
 	var target_basis = Transform.IDENTITY.looking_at(dir, Vector3.UP).basis
-	global_transform.basis = global_transform.basis.slerp(target_basis, rotation_speed * delta)
+	global_transform.basis = global_transform.basis.slerp(target_basis, rotation_speed * 1.5 * delta)
 	
-	# Correr (Usar velocidad de sprint)
-	var run_speed = speed * 1.5
-	velocity.x = lerp(velocity.x, dir.x * run_speed, 3 * delta)
-	velocity.z = lerp(velocity.z, dir.z * run_speed, 3 * delta)
+	# Faster run speed for calling (1.8x instead of 1.5x)
+	var run_speed = speed * 1.8
+	velocity.x = lerp(velocity.x, dir.x * run_speed, 4.0 * delta)
+	velocity.z = lerp(velocity.z, dir.z * run_speed, 4.0 * delta)
 	
-	# Informar al sistema de animación que estamos corriendo
 	rider_sprinting = true
 
 func call_to_player(p_node):
 	calling_player = p_node
 	is_eating = false
-	eating_weight = 0.0 # Levantar la cabeza inmediatamente al ser llamado
+	eating_weight = 0.0
+	# Si está muy lejos, forzar un pequeño impulso inicial
+	var dir = (p_node.global_transform.origin - global_transform.origin).normalized()
+	velocity.x = dir.x * speed
+	velocity.z = dir.z * speed
 
 func interact(player_node):
 	if is_ridden:

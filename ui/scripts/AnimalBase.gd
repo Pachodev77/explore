@@ -19,6 +19,8 @@ var velocity = Vector3.ZERO
 var target_dir = Vector3.ZERO
 var move_timer = 0.0
 var anim_phase = 0.0
+var is_landing = true  # Nuevo: Empiezan en modo aterrizaje (congelados)
+var landing_timer = 0.0 # Tiempo de espera para que la física se sincronice
 
 # --- ESTADO DE COMPORTAMIENTO ---
 var is_eating = false
@@ -104,14 +106,27 @@ func _physics_process(delta):
 	
 	var ed = delta * 2.0  # Effective Delta compensado
 	
-	# 1. Seguridad anti-void
+	# 1. Seguridad anti-void y Aterrizaje
+	if is_landing:
+		landing_timer += ed
+		velocity = Vector3.ZERO # No acumular fuerza de caída mientras esperamos el suelo
+		
+		# Intentar "pegar" al suelo si estamos cerca o si ha pasado suficiente tiempo para que la colisión cargue
+		if is_on_floor() or landing_timer > 0.5:
+			is_landing = false
+		else:
+			# Si no ha aterrizado, forzar snap hacia abajo suavemente para buscar el suelo
+			velocity.y = -2.0 
+			velocity = move_and_slide(velocity, Vector3.UP)
+			return
+	
 	_handle_void_safety()
 	
-	# 2. Gravedad
+	# 2. Gravedad Normal (Solo si ya aterrizó)
 	if not is_on_floor():
 		velocity.y -= gravity * ed
 	elif velocity.y < 0:
-		velocity.y = 0
+		velocity.y = 0 # Detener caída al tocar suelo real
 	
 	# 3. Comportamiento específico del animal
 	move_timer -= ed
@@ -147,8 +162,17 @@ func _update_activation_state():
 
 func _handle_void_safety():
 	if global_transform.origin.y < -30.0:
-		global_transform.origin.y = 10.0
-		velocity.y = 0
+		velocity = Vector3.ZERO
+		is_landing = true # Volver a congelar para aterrizar seguro
+		landing_timer = 0.0
+		
+		var wm = get_tree().root.find_node("WorldManager", true, false)
+		if wm and wm.has_method("get_terrain_height_at"):
+			var gx = global_transform.origin.x
+			var gz = global_transform.origin.z
+			global_transform.origin.y = wm.get_terrain_height_at(gx, gz) + 1.5
+		else:
+			global_transform.origin.y = 15.0
 
 func _apply_movement(delta: float):
 	if target_dir.length() > 0.1:
