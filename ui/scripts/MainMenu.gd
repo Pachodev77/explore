@@ -22,6 +22,10 @@ func _ready():
 	options_btn.connect("pressed", self, "_on_options_pressed")
 	credits_btn.connect("pressed", self, "_on_credits_pressed")
 	
+	# Desactivar botón de carga si no hay archivo
+	if ServiceLocator.has_service("save_manager"):
+		load_game_btn.disabled = not ServiceLocator.get_save_manager().has_save_file()
+	
 	call_deferred("_start_background_loading")
 
 func _start_background_loading():
@@ -48,28 +52,37 @@ func _process(_delta):
 			break
 
 func _on_new_game_pressed():
+	# Si empezamos juego nuevo, asegurarnos de que no haya una carga pendiente vieja
+	if SaveManager.has_method("clear_pending_load"):
+		SaveManager.clear_pending_load()
+		
+	# Detener cargador de fondo para evitar conflictos de acceso al archivo
+	_loader = null
+	set_process(false)
+	
 	LoadingManager.show_loading()
 	if _main_scene_resource:
-		get_tree().change_scene_to(_main_scene_resource)
-	elif _loader:
-		# Forzar completar carga
-		while _loader:
-			var err = _loader.poll()
-			if err == ERR_FILE_EOF:
-				_main_scene_resource = _loader.get_resource()
-				_loader = null
-				get_tree().change_scene_to(_main_scene_resource)
-				break
-			elif err != OK:
-				get_tree().change_scene(GAME_SCENE_PATH)
-				break
+		get_tree().call_deferred("change_scene_to", _main_scene_resource)
 	else:
-		get_tree().change_scene(GAME_SCENE_PATH)
+		get_tree().call_deferred("change_scene", GAME_SCENE_PATH)
 
 func _on_load_game_pressed():
-	LoadingManager.show_loading()
-	# TODO: Implementar pantalla de carga de partidas
-	pass
+	# Acceso directo al Autoload para mayor velocidad y evitar delays del ServiceLocator
+	if SaveManager.load_game_data():
+		# Detener cargador de fondo
+		_loader = null
+		set_process(false)
+		
+		# Mostrar pantalla de carga
+		LoadingManager.show_loading()
+		
+		# Cambiar escena de forma diferida para asegurar un estado limpio del árbol
+		if _main_scene_resource:
+			get_tree().call_deferred("change_scene_to", _main_scene_resource)
+		else:
+			get_tree().call_deferred("change_scene", GAME_SCENE_PATH)
+	else:
+		print("MainMenu: No se pudo cargar la partida o no existe.")
 
 func _on_options_pressed():
 	# TODO: Implementar panel de opciones

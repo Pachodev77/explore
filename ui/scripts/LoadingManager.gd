@@ -33,21 +33,26 @@ func _ready():
 	GameEvents.connect("world_ready", self, "_on_world_ready")
 
 func show_loading():
-	# No usar tween para la entrada, queremos que sea OPACO YA para tapar glitches
 	is_loading = true
 	overlay.modulate.a = 1.0
 	overlay.visible = true
+	
+	# FAIL-SAFE: Si el juego crashea en carga, ocultar negro tras 12 segundos
+	var fst = get_tree().create_timer(12.0)
+	fst.connect("timeout", self, "hide_instant")
 
 func _on_world_ready():
 	if not is_loading: return
 	
-	# ESPERA EXTENDIDA: Garantizamos que todo el terreno, decoraciones y animales estén listos.
-	yield(get_tree().create_timer(3.0), "timeout")
+	# Buffer de estabilidad: 1 segundo es suficiente.
+	yield(get_tree().create_timer(1.0), "timeout")
 	
-	# Desvanecimiento cinemático lento (2 segundos)
+	if not is_instance_valid(overlay): return
+	
+	# Desvanecimiento cinemático suave (1.2 segundos)
 	var t = Tween.new()
 	add_child(t)
-	t.interpolate_property(overlay, "modulate:a", 1.0, 0.0, 2.0, Tween.TRANS_SINE, Tween.EASE_IN_OUT)
+	t.interpolate_property(overlay, "modulate:a", 1.0, 0.0, 1.2, Tween.TRANS_SINE, Tween.EASE_IN_OUT)
 	t.start()
 	
 	yield(t, "tween_completed")
@@ -56,5 +61,5 @@ func _on_world_ready():
 	t.queue_free()
 
 func hide_instant():
-	overlay.visible = false
 	is_loading = false
+	overlay.visible = false

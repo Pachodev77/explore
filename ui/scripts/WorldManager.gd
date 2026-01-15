@@ -45,6 +45,8 @@ var shared_res = {
 	"chicken_scene": null
 }
 
+var current_seed = 0
+
 # Object Pool
 var tile_pool = []
 
@@ -57,7 +59,16 @@ func _ready():
 	
 	randomize()
 	var common_seed = randi()
+	var saved_data = null
 	
+	if ServiceLocator.has_service("save_manager"):
+		var sm = ServiceLocator.get_save_manager()
+		if sm.has_pending_load:
+			saved_data = sm.get_pending_data()
+			if saved_data and saved_data.has("world_seed"):
+				common_seed = int(saved_data["world_seed"])
+	
+	current_seed = common_seed
 	noise.seed = common_seed
 	noise.octaves = 3
 	noise.period = 15.0
@@ -79,40 +90,56 @@ func _ready():
 	road_system.init(common_seed, tile_size)
 	setup_shared_resources()
 	
-	# 1. Calcular altura exacta del terreno en (0,0) para spawn seguro
-	var h_val = height_noise.get_noise_2d(0, 0)
-	# Detectar bioma en 0,0 para saber el multiplicador de altura
-	var b_noise_val = biome_noise.get_noise_2d(0, 0)
-	var deg = rad2deg(atan2(0, 0)) + (b_noise_val * 120.0) # Simplificado para (0,0)
-	var h_mult = H_PRAIRIE
-	if deg > 45 and deg <= 135: h_mult = H_JUNGLE
-	elif deg > -45 and deg <= 45: h_mult = H_DESERT
-	elif deg > -135 and deg <= -45: h_mult = H_SNOW
-	
-	var spawn_y = h_val * h_mult + 5.0 # 5 metros por encima del suelo real
-	player.global_transform.origin = Vector3(0, spawn_y, 0)
+	# Aplicar posición del jugador si hay carga
+	if saved_data and saved_data.has("player_pos"):
+		var p = saved_data["player_pos"]
+		player.global_transform.origin = Vector3(p.x, p.y, p.z)
+		if saved_data.has("player_rot_y"):
+			player.rotation.y = saved_data["player_rot_y"]
+		
+		# Cargar Inventario
+		if saved_data.has("inventory") and ServiceLocator.has_service("inventory"):
+			ServiceLocator.get_inventory_manager().load_save_data(saved_data["inventory"])
+		
+		# Restaurar Rotación de Cámara y Dirección de Mirada
+		if saved_data.has("player_cam_rot_x") and player.has_node("CameraPivot"):
+			player.get_node("CameraPivot").rotation.x = saved_data["player_cam_rot_x"]
+		if saved_data.has("player_look_dir"):
+			player.look_dir = Vector2(saved_data["player_look_dir"].x, saved_data["player_look_dir"].y)
+	else:
+		# 1. Calcular altura exacta del terreno en (0,0) para spawn seguro
+		var h_val = height_noise.get_noise_2d(0, 0)
+		var b_noise_val = biome_noise.get_noise_2d(0, 0)
+		var deg = rad2deg(atan2(0, 0)) + (b_noise_val * 120.0)
+		var h_mult = H_PRAIRIE
+		if deg > 45 and deg <= 135: h_mult = H_JUNGLE
+		elif deg > -45 and deg <= 45: h_mult = H_DESERT
+		elif deg > -135 and deg <= -45: h_mult = H_SNOW
+		
+		var spawn_y = h_val * h_mult + 5.0
+		player.global_transform.origin = Vector3(0, spawn_y, 0)
 	
 	# 2. Desactivar física temporalmente para que no caiga mientras cargan los tiles
 	if player.has_method("set_physics_process"):
 		player.set_physics_process(false)
-
+	
 	# 3. Generar área Inicial INMEDIATA (3x3)
+	# CRÍTICO: Los tiles inmediatos deben ser LOD.HIGH (0) para tener física y no caer al vacío
 	var p_coords = get_tile_coords(player.global_transform.origin)
 	for x in range(int(p_coords.x) - 1, int(p_coords.x) + 2):
 		for z in range(int(p_coords.y) - 1, int(p_coords.y) + 2):
-			spawn_tile(x, z)
+			var is_player_tile = (x == int(p_coords.x) and z == int(p_coords.y))
+			spawn_tile(x, z, 0 if is_player_tile else 1)
 	
 	# 4. ESPERAR a que la colisión del tile central esté lista
 	yield(get_tree(), "idle_frame")
 	yield(get_tree(), "idle_frame") # 2 frames son suficientes para el setup inicial
 	
-	# 5. Activar física y colocar al jugador
-	if player.has_method("set_physics_process"):
-		player.set_physics_process(true)
-	
 	last_player_tile = p_coords
 	
-	# NUEVO: Sistema de Warmup y Spawneo Escalonado para evitar tirones
+	# NUEVO: El jugador permanece en pausa física hasta que world_ready se emita al final
+	# de la secuencia de spawn.
+	
 	_start_spawn_sequence()
 
 func _start_spawn_sequence():
@@ -124,13 +151,37 @@ func _start_spawn_sequence():
 	
 	# Carga escalonada de animales iniciales
 	var horse_scene = load("res://ui/scenes/Horse.tscn")
+	var saved_data = null
+	if ServiceLocator.get_save_manager().has_pending_load:
+		saved_data = ServiceLocator.get_save_manager().get_pending_data()
+
 	if horse_scene:
 		yield(get_tree(), "idle_frame")
 		if not is_instance_valid(self): return
 		var horse = horse_scene.instance()
 		add_child(horse)
-		var h = get_terrain_height_at(10, -10)
-		horse.global_transform.origin = Vector3(10, h + 0.8, -10)
+		
+		var h_pos = Vector3(10, 0, -10)
+		var h_rot = 0.0
+		var should_mount = false
+		
+		if saved_data and saved_data.has("is_riding") and saved_data["is_riding"]:
+			if saved_data.has("horse_pos"):
+				var hp = saved_data["horse_pos"]
+				h_pos = Vector3(hp.x, hp.y, hp.z)
+				should_mount = true
+			if saved_data.has("horse_rot_y"):
+				h_rot = saved_data["horse_rot_y"]
+		
+		var h_y = get_terrain_height_at(h_pos.x, h_pos.z)
+		horse.global_transform.origin = Vector3(h_pos.x, h_y + 0.8, h_pos.z)
+		horse.rotation.y = h_rot
+		
+		if should_mount:
+			# Esperar un frame extra para que el caballo se asiente
+			yield(get_tree(), "idle_frame")
+			if is_instance_valid(player) and player.has_method("mount"):
+				player.mount(horse)
 		
 	if shared_res["cow_scene"]:
 		for i in range(2):
@@ -141,6 +192,9 @@ func _start_spawn_sequence():
 			var h = get_terrain_height_at(offset, -offset)
 			cow.global_transform.origin = Vector3(offset, h + 0.8, -offset)
 			cow.is_night_cow = true
+			# Definir posición del establo (basado en StructureBuilder.add_stable)
+			cow.night_target_pos = Vector3(18.0, 2.0, 18.0)
+			cow.night_waypoint_pos = Vector3(18.0, 2.0, 10.0) # Frente a la entrada
 		yield(get_tree(), "idle_frame")
 			
 	if shared_res["goat_scene"]:
@@ -164,10 +218,22 @@ func _start_spawn_sequence():
 			var spawn_pos = Vector3(-18, 0, 18) + offset
 			var hc = get_terrain_height_at(spawn_pos.x, spawn_pos.z)
 			chicken.global_transform.origin = Vector3(spawn_pos.x, hc + 0.5, spawn_pos.z)
+			chicken.is_night_chicken = true
+			# Posición del gallinero (basado en StructureBuilder.add_chicken_coop)
+			chicken.night_target_pos = Vector3(-18.0, 2.0, 18.0)
+			chicken.night_waypoint_pos = Vector3(-18.0, 2.0, 14.0) # Frente a la rampa
 		yield(get_tree(), "idle_frame")
 	
 	update_tiles()
+	
+	# Restaurar física del jugador al final de TODO (Garantiza suelo sólido)
+	if is_instance_valid(player) and player.has_method("set_physics_process"):
+		player.set_physics_process(true)
+		
 	GameEvents.emit_signal("world_ready")
+	
+	if ServiceLocator.has_service("save_manager"):
+		ServiceLocator.get_save_manager().clear_pending_load()
 
 func _warmup_shaders():
 	# Crear un nodo temporal para forzar la compilación de shaders
@@ -377,7 +443,7 @@ func _process(delta):
 
 var _cached_water = null
 
-func spawn_tile(x, z):
+func spawn_tile(x, z, forced_lod = -1):
 	var coords = Vector2(x, z)
 	if active_tiles.has(coords): return
 	
@@ -394,10 +460,11 @@ func spawn_tile(x, z):
 	
 	var is_spawn = (x == 0 and z == 0) or road_system.is_settlement_tile(x, z)
 	
-	# Always spawn as LOW LOD for speed. Will upgrade later.
-	# Enum: LOD.LOW = 1
+	# LOD logic: 0 = HIGH (con física), 1 = LOW (sin física)
+	var lod = forced_lod if forced_lod != -1 else 1
+	
 	if tile.has_method("setup_biome"):
-		tile.setup_biome(0, shared_res, 0, is_spawn, 1) # 1 = LOD.LOW
+		tile.setup_biome(0, shared_res, 0, is_spawn, lod)
 	active_tiles[coords] = tile
 
 func get_tile_coords(pos):

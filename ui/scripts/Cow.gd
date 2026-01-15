@@ -95,21 +95,26 @@ func _physics_process(delta):
 				if global_transform.origin.distance_to(night_waypoint_pos) < 2.5:
 					has_reached_waypoint = true
 			
-			target_dir = (final_target - global_transform.origin).normalized()
+			if final_target != null:
+				target_dir = (final_target - global_transform.origin).normalized()
 			
 			# Si llegó al objetivo final
-			if has_reached_waypoint and global_transform.origin.distance_to(night_target_pos) < 2.2:
+			if has_reached_waypoint and night_target_pos != null and global_transform.origin.distance_to(night_target_pos) < 2.2:
 				target_dir = Vector3.ZERO
 				velocity.x = 0; velocity.z = 0
 				is_eating = true
 		elif is_exiting:
 			is_eating = false
-			target_dir = (night_waypoint_pos - global_transform.origin).normalized()
-			if global_transform.origin.distance_to(night_waypoint_pos) < 2.5:
+			if night_waypoint_pos != null:
+				target_dir = (night_waypoint_pos - global_transform.origin).normalized()
+				if global_transform.origin.distance_to(night_waypoint_pos) < 2.5:
+					is_exiting = false
+					has_reached_waypoint = false
+					is_eating = true
+					move_timer = 2.0
+			else:
 				is_exiting = false
-				has_reached_waypoint = false
 				is_eating = true
-				move_timer = 2.0
 	
 	# Comportamiento errático normal (Día o cuando no está en navegación forzada)
 	elif move_timer <= 0:

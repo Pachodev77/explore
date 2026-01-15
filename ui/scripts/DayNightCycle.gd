@@ -30,8 +30,13 @@ func _ready():
 	ServiceLocator.register_service("day_cycle", self)
 	time_of_day = start_time
 	
-	# Shadows restored by user request - configured for low-end in Scene
-	# sun.shadow_enabled = true # Managed by Scene Settings now
+	# Cargar tiempo desde Savemanager
+	if ServiceLocator.has_service("save_manager"):
+		var sm = ServiceLocator.get_save_manager()
+		if sm.has_pending_load:
+			var data = sm.get_pending_data()
+			if data and data.has("day_time"):
+				time_of_day = float(data["day_time"])
 	
 	update_cycle()
 

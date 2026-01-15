@@ -401,12 +401,18 @@ func _on_resume():
 	_toggle_pause()
 
 func _on_save():
-	# TODO: Implementar guardado real
-	pass
+	if ServiceLocator.has_service("save_manager"):
+		var sm = ServiceLocator.get_save_manager()
+		if sm.save_game():
+			# Opcional: Mostrar una notificación de guardado
+			_show_item_notification("Partida Guardada", 1, "res://ui/icons/inventory.jpg")
 
 func _on_load():
-	# TODO: Implementar carga real
-	pass
+	if ServiceLocator.has_service("save_manager"):
+		var sm = ServiceLocator.get_save_manager()
+		if sm.load_game_data():
+			get_tree().paused = false
+			get_tree().reload_current_scene()
 
 func _on_main_menu():
 	get_tree().paused = false # IMPORTANTE: Despausar antes de cambiar escena

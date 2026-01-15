@@ -13,6 +13,9 @@ var items = {
 	"berries": {"name": "Bayas", "qty": 0, "icon": "res://ui/icons/item_berries.jpg"}
 }
 
+func _ready():
+	ServiceLocator.register_service("inventory", self)
+
 func add_item(id, amount):
 	if items.has(id):
 		items[id].qty += amount
@@ -36,3 +39,16 @@ func get_item_qty(id):
 	if items.has(id):
 		return items[id].qty
 	return 0
+
+func get_save_data():
+	var save = {}
+	for id in items.keys():
+		save[id] = items[id].qty
+	return save
+
+func load_save_data(data):
+	if typeof(data) != TYPE_DICTIONARY: return
+	for id in data.keys():
+		if items.has(id):
+			items[id].qty = int(data[id])
+	emit_signal("inventory_updated")

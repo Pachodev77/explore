@@ -112,20 +112,23 @@ func _update_behavior(delta: float):
 		_random_behavior()
 
 func _navigate_to_roost():
+	if night_target_pos == null: return
+	
 	is_pecking = false
 	is_exiting = false
 	
-	var final_target: Vector3 = night_target_pos
+	var final_target = night_target_pos
 	
 	# Ir primero al waypoint
-	if not has_reached_waypoint and night_waypoint_pos:
+	if not has_reached_waypoint and night_waypoint_pos != null:
 		final_target = night_waypoint_pos
 		var dist_2d = _distance_2d(global_transform.origin, final_target)
 		if dist_2d < 0.6:
 			has_reached_waypoint = true
 	
 	# Calcular dirección 2D
-	target_dir = _direction_2d_to(final_target)
+	if final_target != null:
+		target_dir = _direction_2d_to(final_target)
 	
 	# Comprobar llegada al objetivo final
 	if has_reached_waypoint:
@@ -142,6 +145,11 @@ func _exit_roost():
 	is_sleeping = false
 	is_pecking = false
 	
+	if night_waypoint_pos == null:
+		is_exiting = false
+		has_reached_waypoint = false
+		return
+		
 	target_dir = _direction_2d_to(night_waypoint_pos)
 	
 	if _distance_2d(global_transform.origin, night_waypoint_pos) < 1.0:

@@ -280,8 +280,9 @@ func _apply_movement_physics(delta):
 		velocity.x = 0
 		velocity.z = 0
 	
-	if translation.y < -50:
-		translation = Vector3(0, 60, 0)
+	if translation.y < -100:
+		# Seguridad: Si cae al vacío por un glitch, intentar aparecer de nuevo arriba en el mismo sitio
+		translation.y = 50.0 
 		velocity = Vector3.ZERO
 	
 	if direction.length() > 0.1:
