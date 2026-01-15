@@ -324,11 +324,13 @@ func setup_shared_resources():
 	var t_sand = preload("res://ui/textures/sand.jpg")
 	var t_snow = preload("res://ui/textures/snow.jpg")
 	var t_jungle = preload("res://ui/textures/jungle.jpg")
+	var t_gravel = preload("res://ui/textures/gravel.jpg")
 	
 	shared_res["ground_mat"].set_shader_param("grass_tex", t_grass)
 	shared_res["ground_mat"].set_shader_param("sand_tex", t_sand)
 	shared_res["ground_mat"].set_shader_param("snow_tex", t_snow)
 	shared_res["ground_mat"].set_shader_param("jungle_tex", t_jungle)
+	shared_res["ground_mat"].set_shader_param("gravel_tex", t_gravel)
 	shared_res["ground_mat"].set_shader_param("uv_scale", 0.025)
 	
 	var tree_scene = preload("res://ui/tree.glb")

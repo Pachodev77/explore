@@ -4,6 +4,7 @@ uniform sampler2D grass_tex;
 uniform sampler2D sand_tex;
 uniform sampler2D snow_tex;
 uniform sampler2D jungle_tex;
+uniform sampler2D gravel_tex;
 
 uniform float uv_scale = 0.025; 
 uniform vec3 player_pos;
@@ -11,10 +12,12 @@ uniform float torch_intensity = 0.0; // 0 a 1 para activar el brillo per-pixel
 
 varying vec3 world_pos;
 varying vec2 terrain_uv;
+varying float road_w;
 
 void vertex() {
 	world_pos = (WORLD_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	terrain_uv = fract(world_pos.xz * uv_scale);
+	road_w = UV2.x;
 }
 
 void fragment() {
@@ -34,6 +37,13 @@ void fragment() {
 	
 	float total = w_grass + w_sand + w_snow + w_jungle + 0.0001;
 	vec3 base_albedo = final_color / total;
+	
+	// --- TEXTURA DE CAMINO (GRAVEL) ---
+	vec3 gravel = texture(gravel_tex, uv).rgb;
+	// Usar un tinte ligeramente más oscuro/gris para el gravel del camino
+	gravel *= vec3(0.9, 0.85, 0.82);
+	
+	base_albedo = mix(base_albedo, gravel, road_w);
 	
 	// --- FIX PARA MÓVILES: ILUMINACIÓN PER-PIXEL ---
 	// La luz OmniLight en móviles a veces usa vertex-lighting que se ve "manchado" en mallas grandes.

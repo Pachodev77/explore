@@ -224,13 +224,11 @@ func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn, grid_res = G
 				y = lerp(y, 2.0, blend)
 			
 			var road_info = world_manager.get_road_influence(gx, gz)
+			var road_w_val = 0.0
 			if road_info.is_road:
 				y = lerp(y, road_info.height, road_info.weight)
-				var road_w = road_info.weight
-				if road_w > 0.1:
-					wr = lerp(wr, 0.4, road_w); wg = lerp(wg, 0.6, road_w)
-					wb = lerp(wb, 0.0, road_w); wa = lerp(wa, 0.0, road_w)
-			
+				road_w_val = road_info.weight
+					
 			# Mejora de Realismo: Vertex Jitter para romper la cuadrícula
 			# No aplicamos jitter en los bordes para mantener la costura entre tiles perfecta
 			var jitter_x = 0.0
@@ -243,7 +241,7 @@ func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn, grid_res = G
 			var v = Vector3(lx + jitter_x, y, lz + jitter_z)
 			st.add_color(Color(wr, wg, wb, wa))
 			st.add_uv(Vector2(x / float(grid_res), z / float(grid_res)))
-			# UV Adjustment for jitter could go here if needed, but world-pos UVs in shader handle it
+			st.add_uv2(Vector2(road_w_val, 0)) # Pasar el peso del camino al shader
 			st.add_vertex(v)
 		
 		# OPTIMIZACIÓN: Solo yield en HIGH LOD para evitar paroneos
