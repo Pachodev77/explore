@@ -105,7 +105,7 @@ func _process(delta):
 		# Detectar contacto de pies (2 impactos por ciclo TAU)
 		if (prev_phase < PI and phase >= PI) or (prev_phase > phase):
 			if is_on_floor:
-				AudioManager.play_sfx("footstep_grass", 0.4 if run_weight < 0.5 else 0.6)
+				pass # Audio desactivado
 	else:
 		phase = lerp(phase, 0.0, 5.0 * delta)
 	
@@ -157,7 +157,6 @@ func set_jumping(jumping):
 	if jumping and current_jump_state == JumpState.IDLE and is_on_floor:
 		current_jump_state = JumpState.ANTICIPATION
 		jump_timer = 0.0
-		AudioManager.play_sfx("jump", 1.0)
 
 func set_torch(active):
 	is_holding_torch = active
@@ -176,7 +175,6 @@ func update_physics_state(v_vel, full_velocity, grounded):
 	if grounded and current_jump_state == JumpState.IN_AIR:
 		current_jump_state = JumpState.IMPACT
 		jump_timer = 0.0
-		AudioManager.play_sfx("land", 0.8)
 	
 	is_on_floor = grounded
 	

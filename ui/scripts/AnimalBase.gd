@@ -146,22 +146,12 @@ func _physics_process(delta):
 	_update_eating_weight(ed)
 	_update_animation_phase(ed)
 	
-	# Sonidos aleatorios 3D
+	# Sonidos aleatorios 3D (Desactivado)
 	sound_timer -= ed
 	if sound_timer <= 0:
-		_play_random_sound()
 		sound_timer = rand_range(8.0, 20.0)
 
-func _play_random_sound():
-	if not is_active: return
-	var s_name = ""
-	match animal_type:
-		"cow": s_name = "moo"
-		"goat": s_name = "baa"
-		"chicken": s_name = "cluck"
-	
-	if s_name != "":
-		AudioManager.play_sfx_3d(s_name, global_transform.origin, rand_range(0.6, 1.0))
+
 
 # =============================================================================
 # SISTEMAS COMUNES
