@@ -3,16 +3,19 @@ extends Spatial
 # --- GALLINA PROCEDURAL PRO ---
 # Diseño realista con jerarquía de nodos para animación fluida.
 
-export var size_unit = 0.25 # Escala base pequeña para una gallina
-export var body_color = Color(1.0, 0.95, 0.9) # Blanco crema
-export var pattern_color = Color(0.7, 0.3, 0.1) # Marrón pluma
+export var size_unit = 0.25 
+export var body_color = Color(1.0, 0.95, 0.9) 
+export var pattern_color = Color(0.7, 0.3, 0.1) 
 
 var parts = {}
-var master_material  # Sin tipo para permitir ShaderMaterial o SpatialMaterial
+var master_material
+var _gen_id = 0
 
 func _ready():
 	_setup_materials()
-	_generate_structure()
+	var state = _generate_structure()
+	if state is GDScriptFunctionState:
+		yield(state, "completed")
 
 func _setup_materials():
 	var shader = load("res://ui/shaders/chicken.shader")
@@ -23,25 +26,32 @@ func _setup_materials():
 		master_material.set_shader_param("pattern_color", pattern_color)
 		master_material.set_shader_param("pattern_scale", 15.0)
 	else:
-		# Fallback a material estándar si falla el shader
 		master_material = SpatialMaterial.new()
 		master_material.albedo_color = body_color
 		master_material.roughness = 0.8
 
 func _generate_structure():
+	_gen_id += 1
+	var gid = _gen_id
+	
 	for c in get_children(): c.queue_free()
 	parts.clear()
 	
-	var su = size_unit
+	yield(get_tree(), "idle_frame")
+	if not is_instance_valid(self) or gid != _gen_id: return
 	
-	# Root de la gallina
+	var su = size_unit
 	var root = Spatial.new()
 	root.name = "BodyRoot"
-	root.translation = Vector3(0, su * 2.0, 0) # Altura ajustada a la baja
+	root.translation = Vector3(0, su * 2.0, 0) 
 	add_child(root); parts["body"] = root
 	
-	# 1. CUERPO (Torso rechoncho)
+	# 1. CUERPO
 	_create_part_mesh(root, "Torso", Vector3.ZERO, Vector3(su*1.2, su, su*1.5), "ellipsoid")
+	
+	yield(get_tree(), "idle_frame")
+	if not is_instance_valid(self) or gid != _gen_id: return
+	if not is_instance_valid(root): return
 	
 	# 2. CUELLO Y CABEZA
 	var neck_base = Spatial.new()
@@ -60,21 +70,25 @@ func _generate_structure():
 	# Cabeza redonda
 	_create_part_mesh(head, "Skull", Vector3.ZERO, Vector3(su*0.5, su*0.55, su*0.6), "ellipsoid")
 	
-	# Pico (Beak)
+	# Pico
 	var beak_v = Vector3(0, -su*0.1, -su*0.6)
 	_create_part_mesh(head, "Beak", Vector3(0, -su*0.1, -su*0.4), Vector3(su*0.15, su*0.15, 0), "tapered", beak_v, 1.0, Color(1.0, 0.7, 0.1))
 	
-	# Cresta (Comb) - Roja superior
+	# Cresta
 	_create_part_mesh(head, "Comb", Vector3(0, su*0.5, 0), Vector3(su*0.1, su*0.4, su*0.6), "ellipsoid", Vector3.ZERO, 0.7, Color(0.9, 0.1, 0.1))
 	
-	# Barbilla (Wattle) - Roja inferior
+	# Barbilla
 	_create_part_mesh(head, "Wattle", Vector3(0, -su*0.3, -su*0.2), Vector3(su*0.15, su*0.3, su*0.2), "ellipsoid", Vector3.ZERO, 0.7, Color(0.9, 0.1, 0.1))
 	
 	# Ojos
 	for s in [-1, 1]:
 		_create_part_mesh(head, "Eye"+str(s), Vector3(su*0.4*s, su*0.1, -su*0.2), Vector3(su*0.1, su*0.1, su*0.1), "ellipsoid", Vector3.ZERO, 1.0, Color(0.1, 0.1, 0.1))
 
-	# 3. ALAS (Wings)
+	yield(get_tree(), "idle_frame")
+	if not is_instance_valid(self) or gid != _gen_id: return
+	if not is_instance_valid(root): return
+
+	# 3. ALAS
 	for s in [-1, 1]:
 		var wing = Spatial.new()
 		wing.name = "Wing" + ("L" if s == -1 else "R")
@@ -82,7 +96,7 @@ func _generate_structure():
 		root.add_child(wing); parts["wing_"+("l" if s == -1 else "r")] = wing
 		_create_part_mesh(wing, "WingMesh", Vector3(0, 0, su*0.2), Vector3(su*0.1, su*0.7, su*1.1), "ellipsoid")
 
-	# 4. COLA (Tail feathers)
+	# 4. COLA
 	var tail_root = Spatial.new()
 	tail_root.name = "TailRoot"
 	tail_root.translation = Vector3(0, su*0.5, su*1.3)
@@ -92,42 +106,44 @@ func _generate_structure():
 		var t_v = Vector3(0, su*1.2, su*0.5).rotated(Vector3.UP, rot)
 		_create_part_mesh(tail_root, "Feather"+str(i), t_v*0.5, Vector3(su*0.3, su*0.2, 0), "tapered", t_v, 0.8)
 
-	# 5. PATAS (Legs) - Rediseño Anatómico
+	yield(get_tree(), "idle_frame")
+	if not is_instance_valid(self) or gid != _gen_id: return
+	if not is_instance_valid(root): return
+
+	# 5. PATAS
 	for s in [-1, 1]:
 		var leg_root = Spatial.new()
 		leg_root.name = "Leg" + ("L" if s == -1 else "R")
-		# Inserción un poco más adelantada y centrada
 		leg_root.translation = Vector3(su*0.4*s, -su*0.2, -su*0.1)
 		root.add_child(leg_root); parts["leg_"+("l" if s == -1 else "r")] = leg_root
 		
-		# Muslo (Drumstick) - Grueso y del color del cuerpo (Plumas)
+		# Muslo
 		var thigh_v = Vector3(0, -su*0.5, 0)
 		_create_part_mesh(leg_root, "Thigh", thigh_v*0.5, Vector3(su*0.35, su*0.25, 0), "tapered", thigh_v, 0.8, body_color)
 		
-		# Articulación (Knee/Ankle joint)
+		# Articulación
 		var joint = Spatial.new()
 		joint.translation = thigh_v
 		leg_root.add_child(joint)
 		
-		# Zanca (Metatarsus) - Fina y Amarilla
-		var tarsus_v = Vector3(0, -su*0.6, su*0.1) # Ligera inclinación hacia adelante
+		# Zanca
+		var tarsus_v = Vector3(0, -su*0.6, su*0.1) 
 		_create_part_mesh(joint, "Tarsus", tarsus_v*0.5, Vector3(su*0.08, su*0.06, 0), "tapered", tarsus_v, 1.0, Color(1.0, 0.8, 0.2))
 		
-		# Pies (Toes)
+		# Pies
 		var foot_node = Spatial.new()
 		foot_node.translation = tarsus_v
 		joint.add_child(foot_node)
 		
-		# 3 Dedos frontales
+		# Dedos
 		for rot in [-0.6, 0, 0.6]:
 			var toe_v = Vector3(0, -su*0.1, -su*0.5).rotated(Vector3.UP, rot)
 			_create_part_mesh(foot_node, "Toe", toe_v*0.5, Vector3(su*0.04, su*0.04, 0), "tapered", toe_v, 1.0, Color(1.0, 0.8, 0.2))
-			
-		# Dedo trasero (Hallux) para estabilidad y realismo
 		var back_toe_v = Vector3(0, -su*0.05, su*0.2)
 		_create_part_mesh(foot_node, "BackToe", back_toe_v*0.5, Vector3(su*0.04, su*0.04, 0), "tapered", back_toe_v, 1.0, Color(1.0, 0.8, 0.2))
 
 func _create_part_mesh(parent, p_name, pos, p_scale, type, dir = Vector3.ZERO, overlap = 0.7, p_color = null):
+	if not is_instance_valid(parent) or not parent.is_inside_tree(): return null
 	var mi = MeshInstance.new()
 	mi.name = p_name
 	parent.add_child(mi)
@@ -183,13 +199,10 @@ func _add_tapered(st, p1, p2, r1, r2):
 	var fwd = right.cross(dir).normalized()
 	var steps = 8
 	for i in range(steps):
-		var a = 2 * PI * i / steps
-		var an = 2 * PI * (i + 1) / steps
+		var a = 2 * PI * i / steps; var an = 2 * PI * (i + 1) / steps
 		var c = cos(a); var s = sin(a); var cn = cos(an); var sn = sin(an)
-		var v1 = p1 + (right*c + fwd*s)*r1
-		var v2 = p1 + (right*cn + fwd*sn)*r1
-		var v3 = p2 + (right*c + fwd*s)*r2
-		var v4 = p2 + (right*cn + fwd*sn)*r2
+		var v1 = p1 + (right*c + fwd*s)*r1; var v2 = p1 + (right*cn + fwd*sn)*r1
+		var v3 = p2 + (right*c + fwd*s)*r2; var v4 = p2 + (right*cn + fwd*sn)*r2
 		var n1 = (v1-p1).normalized(); var n2 = (v2-p1).normalized()
 		st.add_normal(n1); st.add_vertex(v1)
 		st.add_normal(n2); st.add_vertex(v2)

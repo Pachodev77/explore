@@ -56,6 +56,9 @@ config/icon="res://ui/icons/inventory.jpg"
 
 [autoload]
 
+GameConfig="*res://ui/scripts/GameConfig.gd"
+GameEvents="*res://ui/scripts/GameEvents.gd"
+ServiceLocator="*res://ui/scripts/ServiceLocator.gd"
 InventoryManager="*res://ui/scripts/InventoryManager.gd"
 LoadingManager="*res://ui/scripts/LoadingManager.gd"
 SceneManager="*res://ui/scripts/SceneManager.gd"

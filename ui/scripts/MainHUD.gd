@@ -63,6 +63,8 @@ onready var sidebar_buttons = {
 var notify_container : VBoxContainer
 
 func _ready():
+	ServiceLocator.register_service("hud", self)
+	
 	# Crear Tween reutilizable
 	button_tween = Tween.new()
 	add_child(button_tween)
@@ -253,10 +255,12 @@ func _input(event):
 		if move_index == left_touch_index:
 			var vec = update_joystick(move_pos, left_joy, left_center)
 			emit_signal("joystick_moved", vec)
+			GameEvents.emit_signal("joystick_moved", vec)
 			get_tree().set_input_as_handled()
 		elif move_index == right_touch_index:
 			var vec = update_joystick(move_pos, right_joy, right_center)
 			emit_signal("camera_moved", vec)
+			GameEvents.emit_signal("camera_moved", vec)
 			get_tree().set_input_as_handled()
 
 func update_joystick(touch_pos, joy_node, center_local):
@@ -294,6 +298,7 @@ func _on_button_input(event, btn_name):
 			elif btn_name == "map":
 				# Ahora funciona como botón de Acción
 				emit_signal("action_pressed")
+				GameEvents.emit_signal("action_pressed", "interact")
 			elif btn_name == "mount":
 				emit_signal("mount_pressed")
 			elif btn_name == "jump":
@@ -301,7 +306,7 @@ func _on_button_input(event, btn_name):
 			elif btn_name == "run":
 				emit_signal("run_pressed", true)
 			elif btn_name == "attack":
-				pass # Futuro: emit_signal("attack_pressed", true)
+				GameEvents.emit_signal("action_pressed", "attack")
 		else:
 			# RELEASE: El release siempre se procesa para evitar botones "pegados"
 			animate_button_release(btn)

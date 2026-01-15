@@ -13,7 +13,7 @@ var spawn_queue = []
 var noise = OpenSimplexNoise.new()
 var height_noise = OpenSimplexNoise.new()
 var biome_noise = OpenSimplexNoise.new()
-var road_system = RoadSystem.new() # Nuevo Sistema Vial Modular
+var road_system = RoadSystem.new()
 var last_player_tile = Vector2.INF
 var update_timer = 0.0
 var _lod_upgrade_timer = 0.0 # Timer para upgrades de LOD
@@ -34,10 +34,10 @@ var shared_res = {
 	"bush_mat": SpatialMaterial.new(),
 	"height_noise": null,
 	"biome_noise": null,
-	"H_SNOW": H_SNOW,
-	"H_JUNGLE": H_JUNGLE,
-	"H_DESERT": H_DESERT,
-	"H_PRAIRIE": H_PRAIRIE,
+	"H_SNOW": GameConfig.H_SNOW,
+	"H_JUNGLE": GameConfig.H_JUNGLE,
+	"H_DESERT": GameConfig.H_DESERT,
+	"H_PRAIRIE": GameConfig.H_PRAIRIE,
 	"wood_mat": null, # Cached
 	"sign_mat": null, # Cached
 	"cow_scene": null,
@@ -49,9 +49,11 @@ var shared_res = {
 var tile_pool = []
 
 func _ready():
+	ServiceLocator.register_service("world", self)
+	
 	# Safety Check for exported variables
-	if tile_size == null: tile_size = 150.0
-	if render_distance == null: render_distance = 4
+	if tile_size == null: tile_size = GameConfig.TILE_SIZE
+	if render_distance == null: render_distance = GameConfig.RENDER_DISTANCE
 	
 	randomize()
 	var common_seed = randi()
@@ -107,54 +109,57 @@ func _ready():
 	if player.has_method("set_physics_process"):
 		player.set_physics_process(true)
 	
-	# SPAWN CABALLO Y ANIMALES DE PRUEBA
+	last_player_tile = p_coords
+	
+	# NUEVO: Sistema de Warmup y Spawneo Escalonado para evitar tirones
+	_start_spawn_sequence()
+
+func _start_spawn_sequence():
+	yield(get_tree().create_timer(0.5), "timeout")
+	
+	# Shader Warmup (Renderizar materiales una vez fuera de cámara)
+	_warmup_shaders()
 	yield(get_tree(), "idle_frame")
 	
+	# Carga escalonada de animales iniciales
 	var horse_scene = load("res://ui/scenes/Horse.tscn")
 	if horse_scene:
+		yield(get_tree(), "idle_frame")
+		if not is_instance_valid(self): return
 		var horse = horse_scene.instance()
 		add_child(horse)
 		var h = get_terrain_height_at(10, -10)
 		horse.global_transform.origin = Vector3(10, h + 0.8, -10)
 		
-	var cow_scene = load("res://ui/scenes/Cow.tscn")
-	if cow_scene:
-		# Vaca 1
-		var cow1 = cow_scene.instance()
-		add_child(cow1)
-		cow1.speed = 4.0
-		var h1 = get_terrain_height_at(15, -15)
-		cow1.global_transform.origin = Vector3(15, h1 + 0.8, -15)
-		cow1.is_night_cow = true
-		cow1.night_waypoint_pos = Vector3(11.8, 2.1, 13.0) 
-		cow1.night_target_pos = Vector3(22.0, 2.1, 18.5)
-		
-		# Vaca 2
-		var cow2 = cow_scene.instance()
-		add_child(cow2)
-		cow2.speed = 4.0
-		var h2 = get_terrain_height_at(-15, 15)
-		cow2.global_transform.origin = Vector3(-15, h2 + 0.8, 15)
-		cow2.is_night_cow = true
-		cow2.night_waypoint_pos = Vector3(13.0, 2.1, 11.8)
-		cow2.night_target_pos = Vector3(18.5, 2.1, 22.0)
-		
-	var goat_scene = load("res://ui/scenes/Goat.tscn")
-	if goat_scene:
-		# Cabras iniciales en un círculo muy cerrado (Radio 3m)
+	if shared_res["cow_scene"]:
+		for i in range(2):
+			yield(get_tree(), "idle_frame")
+			if not is_instance_valid(self): return
+			var cow = shared_res["cow_scene"].instance()
+			add_child(cow)
+			cow.speed = 4.0
+			var offset = 15 if i == 0 else -15
+			var h = get_terrain_height_at(offset, -offset)
+			cow.global_transform.origin = Vector3(offset, h + 0.8, -offset)
+			cow.is_night_cow = true
+			
+	if shared_res["goat_scene"]:
 		for i in range(3):
-			var goat = goat_scene.instance()
+			yield(get_tree(), "idle_frame")
+			if not is_instance_valid(self): return
+			var goat = shared_res["goat_scene"].instance()
 			add_child(goat)
 			var angle = i * (TAU / 3.0)
 			var cluster_offset = Vector3(cos(angle), 0, sin(angle)) * 3.0
 			var spawn_pos = Vector3(10, 0, 0) + cluster_offset
 			var hg = get_terrain_height_at(spawn_pos.x, spawn_pos.z)
 			goat.global_transform.origin = Vector3(spawn_pos.x, hg + 0.8, spawn_pos.z)
-	
-	var chicken_scene = load("res://ui/scenes/Chicken.tscn")
-	if chicken_scene:
+			
+	if shared_res["chicken_scene"]:
 		for i in range(4):
-			var chicken = chicken_scene.instance()
+			yield(get_tree(), "idle_frame")
+			if not is_instance_valid(self): return
+			var chicken = shared_res["chicken_scene"].instance()
 			add_child(chicken)
 			chicken.size_unit = 0.28
 			var angle = i * (TAU / 4.0)
@@ -162,20 +167,36 @@ func _ready():
 			var spawn_pos = Vector3(-18, 0, 18) + offset
 			var hc = get_terrain_height_at(spawn_pos.x, spawn_pos.z)
 			chicken.global_transform.origin = Vector3(spawn_pos.x, hc + 0.5, spawn_pos.z)
-			
-			# Navegación nocturna
-			chicken.is_night_chicken = true
-			chicken.night_waypoint_pos = Vector3(-17.0, 2.22, 17.0) 
-			var targets = [
-				Vector3(-20.5, 2.22, 20.5),
-				Vector3(-21.5, 2.22, 20.5),
-				Vector3(-20.5, 2.22, 21.5),
-				Vector3(-21.5, 2.22, 21.5)
-			]
-			chicken.night_target_pos = targets[i]
 	
-	last_player_tile = p_coords
 	update_tiles()
+
+func _warmup_shaders():
+	# Crear un nodo temporal para forzar la compilación de shaders
+	var cam = get_viewport().get_camera()
+	if not cam: return
+	
+	var warmup_node = Spatial.new()
+	warmup_node.translation = cam.global_transform.origin - cam.global_transform.basis.z * 2.0
+	add_child(warmup_node)
+	
+	# Renderizar una esfera con cada material importante
+	var mats = [
+		shared_res["ground_mat"],
+		shared_res["rock_mat"],
+		shared_res["wood_mat"]
+	]
+	
+	for mat in mats:
+		if not mat: continue
+		var mi = MeshInstance.new()
+		mi.mesh = SphereMesh.new()
+		mi.mesh.radius = 0.01 # Muy pequeño
+		mi.material_override = mat
+		warmup_node.add_child(mi)
+	
+	# Dejar que se renderice por 1 frame y luego borrar
+	yield(get_tree(), "idle_frame")
+	warmup_node.queue_free()
 
 # ... (Previous code remains same until update_tiles loop) ...
 

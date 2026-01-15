@@ -11,7 +11,7 @@ class_name AnimalBase
 # --- CONFIGURACIÓN EXPORTADA (Overrideable por cada animal) ---
 export var speed = 2.0
 export var rotation_speed = 3.0
-export var gravity = 25.0
+export var gravity = GameConfig.PLAYER_GRAVITY
 export var active_dist = 60.0  # Distancia máxima para procesar física
 
 # --- ESTADO DE MOVIMIENTO ---
@@ -73,10 +73,9 @@ func _ready():
 	add_to_group("animals")
 	add_to_group(_get_animal_group())
 	
-	# Cachear referencias una sola vez
-	var players = get_tree().get_nodes_in_group("player")
-	_player_node = players[0] if players.size() > 0 else null
-	_day_cycle_node = get_tree().root.find_node("DayNightCycle", true, false)
+	# Cachear referencias vía ServiceLocator
+	_player_node = ServiceLocator.get_player()
+	_day_cycle_node = ServiceLocator.get_day_cycle()
 	
 	# Generar mesh si existe
 	if mesh_gen and mesh_gen.has_method("_generate_structure"):
@@ -99,12 +98,12 @@ func _physics_process(delta):
 	if not is_active:
 		return
 	
-	# Throttle: Procesar cada 2 frames para rendimiento
+	# Throttle: Procesar cada N frames para rendimiento (según Config)
 	_physics_tick += 1
-	if _physics_tick % 2 != 0:
+	if _physics_tick % GameConfig.PHYSICS_REDUCTION_FACTOR != 0:
 		return
 	
-	var ed = delta * 2.0  # Effective Delta compensado
+	var ed = delta * GameConfig.PHYSICS_REDUCTION_FACTOR  # Effective Delta compensado
 	
 	# 1. Seguridad anti-void y Aterrizaje
 	if is_landing:
@@ -148,10 +147,8 @@ func _physics_process(delta):
 
 func _update_activation_state():
 	if not _player_node or not is_instance_valid(_player_node):
-		# Reintentar buscar jugador
-		var players = get_tree().get_nodes_in_group("player")
-		_player_node = players[0] if players.size() > 0 else null
-		return
+		_player_node = ServiceLocator.get_player()
+		if not _player_node: return
 	
 	var d = global_transform.origin.distance_to(_player_node.global_transform.origin)
 	is_active = d < active_dist

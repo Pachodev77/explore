@@ -7,14 +7,20 @@ enum TileLOD { HIGH, LOW }
 # LOD System: LOW = 4 res, no physics, no decos. HIGH = 12 res, full.
 const GRID_RES_HIGH = 12
 const GRID_RES_LOW = 4
-const TILE_SIZE = 150.0
+const TILE_SIZE = GameConfig.TILE_SIZE
 var harvested_instances = {} # Persistencia de tala: { "tree_mmi": [indices], ... }
 
 var current_lod = TileLOD.LOW
 var current_shared_res = null
 var current_is_spawn = false
 
+# SISTEMA DE GENERACIÓN SEGURA (Anti-Crash)
+var _generation_id = 0 # ID para abortar tareas asíncronas viejas
+
 func setup_biome(_dummy_type, shared_resources, _dummy_height = 0, is_spawn = false, lod_level = TileLOD.LOW):
+	_generation_id += 1
+	var gid = _generation_id
+	
 	current_shared_res = shared_resources
 	current_is_spawn = is_spawn
 	current_lod = lod_level
@@ -39,24 +45,44 @@ func setup_biome(_dummy_type, shared_resources, _dummy_height = 0, is_spawn = fa
 	if state is GDScriptFunctionState:
 		yield(state, "completed")
 	
-	if not is_instance_valid(self): return
+	if not is_instance_valid(self) or gid != _generation_id: return
 	visible = true
 	
 	# LOD_LOW: Skip decorations for speed
 	if lod_level == TileLOD.HIGH:
-		_add_decos_final(deco_container, shared_resources, is_spawn)
+		yield(get_tree(), "idle_frame")
+		if not is_instance_valid(self) or gid != _generation_id: return
+		
+		var deco_state = _add_decos_final(deco_container, shared_resources, is_spawn)
+		if deco_state is GDScriptFunctionState:
+			yield(deco_state, "completed")
+			
+		if not is_instance_valid(self) or gid != _generation_id: return
+		
+		# Spawneo escalonado de estructuras
 		if is_spawn:
+			yield(get_tree(), "idle_frame")
+			if not is_instance_valid(self) or gid != _generation_id: return
 			StructureBuilder.add_fence(deco_container, shared_resources)
+			
 			if abs(translation.x) < 1.0 and abs(translation.z) < 1.0:
+				yield(get_tree(), "idle_frame")
+				if not is_instance_valid(self) or gid != _generation_id: return
 				StructureBuilder.add_farmhouse(deco_container, shared_resources)
+				yield(get_tree(), "idle_frame")
+				if not is_instance_valid(self) or gid != _generation_id: return
 				StructureBuilder.add_stable(deco_container, shared_resources)
+				yield(get_tree(), "idle_frame")
+				if not is_instance_valid(self) or gid != _generation_id: return
 				StructureBuilder.add_chicken_coop(deco_container, shared_resources)
 			else:
-				var wm = get_parent()
+				var wm = ServiceLocator.get_world_manager()
 				if wm and wm.has_method("is_settlement_tile"):
 						var tx = round(translation.x / TILE_SIZE)
 						var tz = round(translation.z / TILE_SIZE)
 						if wm.is_settlement_tile(int(tx), int(tz)):
+							yield(get_tree(), "idle_frame")
+							if not is_instance_valid(self) or gid != _generation_id: return
 							if abs(translation.x - 600.0) < 1.0 and abs(translation.z) < 1.0:
 								StructureBuilder.add_market_base(deco_container, shared_resources)
 							elif abs(translation.x + 600.0) < 1.0 and abs(translation.z) < 1.0:
@@ -68,6 +94,9 @@ func upgrade_to_high_lod():
 	if current_lod == TileLOD.HIGH: return
 	if current_shared_res == null: return
 	
+	_generation_id += 1
+	var gid = _generation_id
+	
 	current_lod = TileLOD.HIGH
 	var mesh_instance = get_node_or_null("MeshInstance")
 	var deco_container = get_node_or_null("Decos")
@@ -77,21 +106,38 @@ func upgrade_to_high_lod():
 	if state is GDScriptFunctionState:
 		yield(state, "completed")
 	
-	if not is_instance_valid(self): return
+	if not is_instance_valid(self) or gid != _generation_id: return
 	
-	_add_decos_final(deco_container, current_shared_res, current_is_spawn)
+	yield(get_tree(), "idle_frame")
+	if not is_instance_valid(self) or gid != _generation_id: return
+	
+	var deco_state = _add_decos_final(deco_container, current_shared_res, current_is_spawn)
+	if deco_state is GDScriptFunctionState:
+		yield(deco_state, "completed")
+	
+	if not is_instance_valid(self) or gid != _generation_id: return
+	
 	if current_is_spawn:
+		yield(get_tree(), "idle_frame")
+		if not is_instance_valid(self) or gid != _generation_id: return
 		StructureBuilder.add_fence(deco_container, current_shared_res)
 		if abs(translation.x) < 1.0 and abs(translation.z) < 1.0:
+			yield(get_tree(), "idle_frame")
+			if not is_instance_valid(self) or gid != _generation_id: return
 			StructureBuilder.add_farmhouse(deco_container, current_shared_res)
+			yield(get_tree(), "idle_frame")
+			if not is_instance_valid(self) or gid != _generation_id: return
 			StructureBuilder.add_stable(deco_container, current_shared_res)
+			yield(get_tree(), "idle_frame")
+			if not is_instance_valid(self) or gid != _generation_id: return
 			StructureBuilder.add_chicken_coop(deco_container, current_shared_res)
 		else:
-			var wm = get_parent()
+			var wm = ServiceLocator.get_world_manager()
 			if wm and wm.has_method("is_settlement_tile"):
 				var tx = round(translation.x / TILE_SIZE)
 				var tz = round(translation.z / TILE_SIZE)
 				if wm.is_settlement_tile(int(tx), int(tz)):
+					yield(get_tree(), "idle_frame")
 					if abs(translation.x - 600.0) < 1.0 and abs(translation.z) < 1.0:
 						StructureBuilder.add_market_base(deco_container, current_shared_res)
 					elif abs(translation.x + 600.0) < 1.0 and abs(translation.z) < 1.0:
@@ -100,13 +146,14 @@ func upgrade_to_high_lod():
 						StructureBuilder.add_mine_base(deco_container, current_shared_res)
 
 func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn, grid_res = GRID_RES_HIGH, lod_level = TileLOD.HIGH):
+	var gid = _generation_id
 	var st = SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	
 	var h_noise = shared_res["height_noise"]
 	var b_noise = shared_res["biome_noise"]
-	var hn = shared_res["H_SNOW"]; var hs = shared_res["H_JUNGLE"]
-	var he = shared_res["H_DESERT"]; var hw = shared_res["H_PRAIRIE"]
+	var hn = GameConfig.H_SNOW; var hs = GameConfig.H_JUNGLE
+	var he = GameConfig.H_DESERT; var hw = GameConfig.H_PRAIRIE
 	
 	var step = TILE_SIZE / grid_res
 	var offset = TILE_SIZE / 2.0
@@ -186,7 +233,7 @@ func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn, grid_res = G
 		# En LOW LOD queremos que sea instantáneo para el horizonte
 		if lod_level == TileLOD.HIGH and z % 6 == 0:
 			yield(get_tree(), "idle_frame")
-			if not is_instance_valid(self): return
+			if not is_instance_valid(self) or gid != _generation_id: return
 
 	# Indices
 	for z in range(grid_res):
@@ -202,7 +249,7 @@ func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn, grid_res = G
 	# PHYSICS: Usar trimesh para colisiones precisas en HIGH LOD
 	if lod_level == TileLOD.HIGH or is_spawn:
 		yield(get_tree(), "idle_frame")
-		if not is_instance_valid(self): return
+		if not is_instance_valid(self) or gid != _generation_id: return
 		
 		var collision_shape = get_node_or_null("CollisionShape")
 		if not collision_shape:
@@ -214,6 +261,7 @@ func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn, grid_res = G
 		collision_shape.shape = new_mesh.create_trimesh_shape()
 
 func _add_decos_final(deco_container, shared_res, is_spawn):
+	var gid = _generation_id
 	# Limpieza previa
 	for child in deco_container.get_children():
 		child.queue_free()
@@ -228,6 +276,11 @@ func _add_decos_final(deco_container, shared_res, is_spawn):
 	var spacing = TILE_SIZE / grid_size
 	
 	for x in range(grid_size):
+		# OPTIMIZACIÓN: Yield cada fila de la cuadrícula de decoración
+		if x % 2 == 0:
+			yield(get_tree(), "idle_frame")
+			if not is_instance_valid(self) or gid != _generation_id: return
+			
 		for z in range(grid_size):
 			
 			var lx = (x * spacing) - 75.0 + rand_range(-2, 2)

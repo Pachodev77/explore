@@ -1,7 +1,7 @@
 extends KinematicBody
 
-export(float) var speed = 6.0
-export(float) var rotation_speed = 2.0
+export(float) var speed = GameConfig.PLAYER_SPEED
+export(float) var rotation_speed = GameConfig.PLAYER_ROTATION_SPEED
 var velocity = Vector3.ZERO
 var move_dir = Vector2.ZERO
 var look_dir = Vector2.ZERO
@@ -36,23 +36,39 @@ var is_riding = false
 var current_horse = null
 
 func _ready():
+	ServiceLocator.register_service("player", self)
 	add_to_group("player")
+	
 	yield(get_tree(), "idle_frame")
 	
-	var hud = get_tree().root.find_node("MainHUD", true, false)
-	if hud:
-		hud.connect("joystick_moved", self, "_on_joystick_moved")
-		hud.connect("camera_moved", self, "_on_camera_moved")
-		hud.connect("zoom_pressed", self, "_on_zoom_pressed")
-		hud.connect("mount_pressed", self, "_on_mount_pressed")
-		hud.connect("run_pressed", self, "_on_run_pressed")
-		hud.connect("jump_pressed", self, "_on_jump_pressed")
-		hud.connect("torch_pressed", self, "_on_torch_pressed")
-		hud.connect("action_pressed", self, "_on_action_pressed")
-		hud_ref = hud
+	hud_ref = ServiceLocator.get_hud()
+	if not hud_ref:
+		hud_ref = get_tree().root.find_node("MainHUD", true, false)
 	
-	dnc_ref = get_parent().get_node_or_null("DayNightCycle")
-	wm = get_tree().root.find_node("WorldManager", true, false)
+	if hud_ref:
+		# Compatibilidad con señales directas del HUD
+		if hud_ref.is_connected("joystick_moved", self, "_on_joystick_moved"): pass
+		else: hud_ref.connect("joystick_moved", self, "_on_joystick_moved")
+		
+		hud_ref.connect("camera_moved", self, "_on_camera_moved")
+		hud_ref.connect("zoom_pressed", self, "_on_zoom_pressed")
+		hud_ref.connect("mount_pressed", self, "_on_mount_pressed")
+		hud_ref.connect("run_pressed", self, "_on_run_pressed")
+		hud_ref.connect("jump_pressed", self, "_on_jump_pressed")
+		hud_ref.connect("torch_pressed", self, "_on_torch_pressed")
+		hud_ref.connect("action_pressed", self, "_on_action_pressed")
+	
+	# NUEVO: Conexión mediante GameEvents (Modulariad)
+	GameEvents.connect("joystick_moved", self, "_on_joystick_moved")
+	GameEvents.connect("camera_moved", self, "_on_camera_moved")
+	
+	dnc_ref = ServiceLocator.get_day_cycle()
+	if not dnc_ref:
+		dnc_ref = get_parent().get_node_or_null("DayNightCycle")
+		
+	wm = ServiceLocator.get_world_manager()
+	if not wm:
+		wm = get_tree().root.find_node("WorldManager", true, false)
 	
 	# Inicializar Modulos
 	stats.init(self, hud_ref, dnc_ref)
@@ -252,7 +268,7 @@ func _apply_movement_physics(delta):
 	if is_on_floor() and velocity.y <= 0:
 		velocity.y = -0.1 
 	else:
-		velocity.y -= 25.0 * delta
+		velocity.y -= GameConfig.PLAYER_GRAVITY * delta
 	
 	var snap = Vector3.ZERO
 	if is_on_floor() and velocity.y <= 0:

@@ -15,7 +15,7 @@ var time_of_day : float = 0.5
 var last_update_time : float = 0.0
 var sun_rot_timer : float = 0.0
 var cached_camera : Camera = null
-const UPDATE_INTERVAL = 0.5  # Actualizar cada 0.5 segundos
+const UPDATE_INTERVAL = GameConfig.UPDATE_TICK_LONG
 
 # Colores precalculados
 const SKY_DAY_TOP = Color(0.2, 0.4, 0.8)
@@ -27,6 +27,7 @@ const AMBIENT_DAY = Color(0.65, 0.65, 0.65)
 const AMBIENT_NIGHT = Color(0.15, 0.15, 0.25)
 
 func _ready():
+	ServiceLocator.register_service("day_cycle", self)
 	time_of_day = start_time
 	
 	# Shadows restored by user request - configured for low-end in Scene

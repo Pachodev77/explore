@@ -10,6 +10,8 @@ export var skin_color = Color(0.9, 0.7, 0.7)
 
 var parts = {} 
 var master_material: ShaderMaterial
+var _gen_id = 0 # Para abortar hilos de generación viejos
+
 func _ready():
 	master_material = ShaderMaterial.new()
 	master_material.shader = load("res://ui/shaders/cow_spots.shader")
@@ -18,11 +20,23 @@ func _ready():
 	master_material.set_shader_param("spot_scale", 4.5)
 	master_material.set_shader_param("spot_threshold", 0.42)
 	
-	_generate_structure()
+	var state = _generate_structure()
+	if state is GDScriptFunctionState:
+		yield(state, "completed")
 
 func _generate_structure():
-	for c in get_children(): c.queue_free()
+	# SISTEMA DE SEGURIDAD ASÍNCRONA
+	_gen_id += 1
+	var gid = _gen_id
+	
+	# Limpieza de hilos anteriores
+	for c in get_children():
+		c.queue_free()
 	parts.clear()
+	
+	# Esperar un frame para asegurar que queue_free se procese o simplemente para amortizar
+	yield(get_tree(), "idle_frame")
+	if not is_instance_valid(self) or gid != _gen_id: return
 	
 	var leg_h = hu * 1.5
 	var body_root = Spatial.new()
@@ -35,6 +49,10 @@ func _generate_structure():
 	var rib_p = Vector3(0, hu*0.1, -hu*0.6)
 	_create_part_mesh(body_root, "Chest", rib_p, Vector3(hu*0.8, hu*0.85, hu*1.0), "ellipsoid", Vector3.ZERO, 0.7, null, rib_p)
 	
+	yield(get_tree(), "idle_frame")
+	if not is_instance_valid(self) or gid != _gen_id: return
+	if not is_instance_valid(body_root): return
+	
 	var rear_p = Vector3(0, hu*0.05, hu*0.6)
 	_create_part_mesh(body_root, "Hind", rear_p, Vector3(hu*0.85, hu*0.85, hu*0.9), "ellipsoid", Vector3.ZERO, 0.7, null, rear_p)
 	
@@ -44,13 +62,17 @@ func _generate_structure():
 	# 2. CUELLO Y CABEZA
 	var neck_base = Spatial.new()
 	neck_base.name = "NeckBase"
-	var neck_base_p = rib_p + Vector3(0, hu*0.1, -hu*0.7) # Pivote más bajo
+	var neck_base_p = rib_p + Vector3(0, hu*0.1, -hu*0.7) 
 	neck_base.translation = neck_base_p
 	body_root.add_child(neck_base); parts["neck_base"] = neck_base
 	
-	var neck_v = Vector3(0, hu * 0.65, -hu * 0.45) # Cuello más largo
+	var neck_v = Vector3(0, hu * 0.65, -hu * 0.45) 
 	var neck_offset = neck_base_p + neck_v * 0.5
 	_create_part_mesh(neck_base, "Neck", neck_v*0.5, Vector3(hu*0.55, hu*0.48, 0), "tapered", neck_v, 0.8, null, neck_offset)
+
+	yield(get_tree(), "idle_frame")
+	if not is_instance_valid(self) or gid != _gen_id: return
+	if not is_instance_valid(body_root) or not is_instance_valid(neck_base): return
 
 	var head_n = Spatial.new()
 	head_n.name = "Head"
@@ -97,17 +119,28 @@ func _generate_structure():
 		_create_part_mesh(joint, "L", lo_v*0.5, Vector3(hu*0.2, hu*0.15, 0), "tapered", lo_v, 0.65, null, l_rest_p + u_v + lo_v*0.5)
 		_create_part_mesh(joint, "Hoof", lo_v, Vector3(hu*0.18, hu*0.1, hu*0.2), "ellipsoid", Vector3.ZERO, 1.0, Color(0.15, 0.15, 0.15), l_rest_p + u_v + lo_v)
 
-	# 4. COLA
 	var tail_p = rear_p + Vector3(0, hu*0.1, hu*0.75)
 	var t_root = Spatial.new(); t_root.translation = tail_p; body_root.add_child(t_root); parts["tail"] = t_root
+	
+	yield(get_tree(), "idle_frame")
+	if not is_instance_valid(self) or gid != _gen_id: return
+	if not is_instance_valid(body_root) or not is_instance_valid(t_root): return
+	
 	var t_v = Vector3(0, -hu*1.1, hu*0.1)
 	_create_part_mesh(t_root, "T", t_v*0.5, Vector3(hu*0.05, hu*0.05, 0), "tapered", t_v, 0.9, null, tail_p + t_v*0.5)
 
 func _create_part_mesh(parent, p_name, pos, p_scale, type, dir = Vector3.ZERO, overlap = 0.7, p_color = null, noise_offset = Vector3.ZERO):
-	var mi = MeshInstance.new(); mi.name = p_name; parent.add_child(mi); mi.translation = pos
-	var st = SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	if not is_instance_valid(parent) or not parent.is_inside_tree(): 
+		return null
 	
-	# SIEMPRE DUPLICAR para que cada pieza tenga su propio part_offset
+	var mi = MeshInstance.new()
+	mi.name = p_name
+	parent.add_child(mi) # <-- Línea donde ocurría el error
+	mi.translation = pos
+	
+	var st = SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	
 	var mat = master_material.duplicate()
 	mat.set_shader_param("part_offset", noise_offset)
 	
@@ -130,11 +163,9 @@ func _add_ellipsoid(st, _center, scale):
 			var lon = 2 * PI * j / (steps * 2); var lon_n = 2 * PI * (j + 1) / (steps * 2)
 			var p1 = _get_p(lat, lon, scale); var p2 = _get_p(lat_n, lon, scale)
 			var p3 = _get_p(lat, lon_n, scale); var p4 = _get_p(lat_n, lon_n, scale)
-			# Triangulo 1 (CCW)
 			st.add_normal(p1.normalized()); st.add_vertex(p1)
 			st.add_normal(p2.normalized()); st.add_vertex(p2)
 			st.add_normal(p4.normalized()); st.add_vertex(p4)
-			# Triangulo 2 (CCW)
 			st.add_normal(p1.normalized()); st.add_vertex(p1)
 			st.add_normal(p4.normalized()); st.add_vertex(p4)
 			st.add_normal(p3.normalized()); st.add_vertex(p3)
@@ -151,11 +182,9 @@ func _add_tapered(st, p1, p2, r1, r2):
 		var v1 = p1 + (right*c + fwd*s)*r1; var v2 = p1 + (right*cn + fwd*sn)*r1
 		var v3 = p2 + (right*c + fwd*s)*r2; var v4 = p2 + (right*cn + fwd*sn)*r2
 		var n1 = (v1-p1).normalized(); var n2 = (v2-p1).normalized()
-		# Triangulo 1: v1, v2, v4 (CCW)
 		st.add_normal(n1); st.add_vertex(v1)
 		st.add_normal(n2); st.add_vertex(v2)
 		st.add_normal(n2); st.add_vertex(v4)
-		# Triangulo 2: v1, v4, v3 (CCW)
 		st.add_normal(n1); st.add_vertex(v1)
 		st.add_normal(n2); st.add_vertex(v4)
 		st.add_normal(n1); st.add_vertex(v3)
