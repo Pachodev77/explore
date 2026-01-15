@@ -24,3 +24,4 @@ signal inventory_updated()
 # Eventos de Sistema
 signal save_requested()
 signal settings_updated()
+signal world_ready()

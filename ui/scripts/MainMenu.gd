@@ -48,6 +48,7 @@ func _process(_delta):
 			break
 
 func _on_new_game_pressed():
+	LoadingManager.show_loading()
 	if _main_scene_resource:
 		get_tree().change_scene_to(_main_scene_resource)
 	elif _loader:
@@ -66,6 +67,7 @@ func _on_new_game_pressed():
 		get_tree().change_scene(GAME_SCENE_PATH)
 
 func _on_load_game_pressed():
+	LoadingManager.show_loading()
 	# TODO: Implementar pantalla de carga de partidas
 	pass
 

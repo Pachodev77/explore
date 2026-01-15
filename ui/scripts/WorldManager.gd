@@ -102,8 +102,9 @@ func _ready():
 		for z in range(int(p_coords.y) - 1, int(p_coords.y) + 2):
 			spawn_tile(x, z)
 	
-	# 4. ESPERAR a que la colisión se genere (el GroundTile inicial tiene yields)
-	yield(get_tree().create_timer(0.3), "timeout")
+	# 4. ESPERAR a que la colisión del tile central esté lista
+	yield(get_tree(), "idle_frame")
+	yield(get_tree(), "idle_frame") # 2 frames son suficientes para el setup inicial
 	
 	# 5. Activar física y colocar al jugador
 	if player.has_method("set_physics_process"):
@@ -115,7 +116,7 @@ func _ready():
 	_start_spawn_sequence()
 
 func _start_spawn_sequence():
-	yield(get_tree().create_timer(0.5), "timeout")
+	# Sin esperas arbitrarias
 	
 	# Shader Warmup (Renderizar materiales una vez fuera de cámara)
 	_warmup_shaders()
@@ -133,8 +134,6 @@ func _start_spawn_sequence():
 		
 	if shared_res["cow_scene"]:
 		for i in range(2):
-			yield(get_tree(), "idle_frame")
-			if not is_instance_valid(self): return
 			var cow = shared_res["cow_scene"].instance()
 			add_child(cow)
 			cow.speed = 4.0
@@ -142,11 +141,10 @@ func _start_spawn_sequence():
 			var h = get_terrain_height_at(offset, -offset)
 			cow.global_transform.origin = Vector3(offset, h + 0.8, -offset)
 			cow.is_night_cow = true
+		yield(get_tree(), "idle_frame")
 			
 	if shared_res["goat_scene"]:
 		for i in range(3):
-			yield(get_tree(), "idle_frame")
-			if not is_instance_valid(self): return
 			var goat = shared_res["goat_scene"].instance()
 			add_child(goat)
 			var angle = i * (TAU / 3.0)
@@ -154,11 +152,10 @@ func _start_spawn_sequence():
 			var spawn_pos = Vector3(10, 0, 0) + cluster_offset
 			var hg = get_terrain_height_at(spawn_pos.x, spawn_pos.z)
 			goat.global_transform.origin = Vector3(spawn_pos.x, hg + 0.8, spawn_pos.z)
+		yield(get_tree(), "idle_frame")
 			
 	if shared_res["chicken_scene"]:
 		for i in range(4):
-			yield(get_tree(), "idle_frame")
-			if not is_instance_valid(self): return
 			var chicken = shared_res["chicken_scene"].instance()
 			add_child(chicken)
 			chicken.size_unit = 0.28
@@ -167,8 +164,10 @@ func _start_spawn_sequence():
 			var spawn_pos = Vector3(-18, 0, 18) + offset
 			var hc = get_terrain_height_at(spawn_pos.x, spawn_pos.z)
 			chicken.global_transform.origin = Vector3(spawn_pos.x, hc + 0.5, spawn_pos.z)
+		yield(get_tree(), "idle_frame")
 	
 	update_tiles()
+	GameEvents.emit_signal("world_ready")
 
 func _warmup_shaders():
 	# Crear un nodo temporal para forzar la compilación de shaders
