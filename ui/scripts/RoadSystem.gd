@@ -33,36 +33,32 @@ func get_settlement_coords(sc_x: int, sc_z: int) -> Vector2:
 func get_road_influence(gx: float, gz: float) -> Dictionary:
 	var tile_x = floor(gx / tile_size)
 	var tile_z = floor(gz / tile_size)
-	var sc_x = floor(tile_x / SUPER_CHUNK_SIZE)
-	var sc_z = floor(tile_z / SUPER_CHUNK_SIZE)
+	# BUG FIX: Forzamos float para evitar la división de enteros que rompía el mapa en el Norte/Oeste
+	var sc_x = int(floor(float(tile_x) / float(SUPER_CHUNK_SIZE)))
+	var sc_z = int(floor(float(tile_z) / float(SUPER_CHUNK_SIZE)))
 	
 	var segments = _get_road_segments_cached(sc_x, sc_z)
 	var min_d = 9999.0
 	var pos_2d = Vector2(gx, gz)
 	
 	for seg in segments:
-		# FAST BOUNDING BOX per segment
-		if abs(gx - seg.a.x) > 40.0 and abs(gx - seg.b.x) > 40.0: continue
-		if abs(gz - seg.a.y) > 40.0 and abs(gz - seg.b.y) > 40.0: continue
+		# FAST BOUNDING BOX (60.0 para cobertura total de curvas)
+		if abs(gx - seg.a.x) > 60.0 and abs(gx - seg.b.x) > 60.0: continue
+		if abs(gz - seg.a.y) > 60.0 and abs(gz - seg.b.y) > 60.0: continue
 		
 		var d = _dist_to_segment_2d_optimized(pos_2d, seg.a, seg.b)
 		if d < min_d: 
 			min_d = d
-			if min_d < 1.0: break # Early exit
+			if min_d < 1.0: break
 	
-	var road_width = 12.0
-	var falloff = 6.0
-	var is_on_edge = false
-	var tree_edge_dist = 14.5 
-	
-	if abs(min_d - tree_edge_dist) < 1.5:
-		is_on_edge = true
+	var road_width = 7.0  # Vía angosta definida
+	var falloff = 3.5     # Transición rápida
 	
 	if min_d < (road_width + falloff):
 		var w = 1.0 - clamp((min_d - road_width) / falloff, 0.0, 1.0)
-		return { "is_road": true, "weight": w, "height": 2.1, "is_edge": is_on_edge, "dist": min_d }
+		return { "is_road": true, "weight": w, "height": 2.1, "is_edge": false, "dist": min_d }
 	
-	return { "is_road": false, "weight": 0.0, "height": 0.0, "is_edge": is_on_edge, "dist": min_d }
+	return { "is_road": false, "weight": 0.0, "height": 0.0, "is_edge": false, "dist": min_d }
 
 func is_settlement_tile(x: int, z: int) -> bool:
 	var sc_x = floor(float(x) / SUPER_CHUNK_SIZE)

@@ -5,7 +5,7 @@ enum TileLOD { HIGH, LOW }
 
 # Configuración del plano
 # LOD System: LOW = 4 res, no physics, no decos. HIGH = 12 res, full.
-const GRID_RES_HIGH = 16
+const GRID_RES_HIGH = 20
 const GRID_RES_LOW = 4
 const TILE_SIZE = GameConfig.TILE_SIZE
 var harvested_instances = {} # Persistencia de tala: { "tree_mmi": [indices], ... }
@@ -222,13 +222,15 @@ func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn, grid_res = G
 				road_w_val = road_info.weight
 					
 			# Mejora de Realismo: Vertex Jitter para romper la cuadrícula
-			# No aplicamos jitter en los bordes para mantener la costura entre tiles perfecta
+			# EXCLUSIÓN: Si hay carretera (road_w_val > 0), reducimos el jitter para que el camino sea PLANO y no un filo
 			var jitter_x = 0.0
 			var jitter_z = 0.0
 			if x > 0 and x < grid_res and z > 0 and z < grid_res:
+				# 0 jitter si estamos en la carretera (road_w_val > 0)
+				var jitter_strength = 1.0 - clamp(road_w_val * 4.0, 0.0, 1.0) 
 				var j_noise = b_noise.get_noise_2d(gx * 5.0, gz * 5.0)
-				jitter_x = j_noise * step * 0.45
-				jitter_z = h_noise.get_noise_2d(gz * 5.0, gx * 5.0) * step * 0.45
+				jitter_x = j_noise * step * 0.45 * jitter_strength
+				jitter_z = h_noise.get_noise_2d(gz * 5.0, gx * 5.0) * step * 0.45 * jitter_strength
 					
 			var v = Vector3(lx + jitter_x, y, lz + jitter_z)
 			st.add_color(Color(wr, wg, wb, wa))
@@ -277,9 +279,8 @@ func _add_decos_final(deco_container, shared_res, is_spawn):
 	var tree_instances = []
 	var cactus_instances = []
 	
-	# OPTIMIZACIÓN: Grid balanceado (10x10) para capturar bordes de camino
-	# Con grid_size 6 (25m entre muestras), es muy probable saltarse los bordes de la carretera (15m de ancho)
-	var grid_size = 10 
+	# OPTIMIZACIÓN: Cuadrícula ultra-densa (20x20) para capturar bordes de camino angostos
+	var grid_size = 20 
 	var spacing = TILE_SIZE / grid_size
 	
 	for x in range(grid_size):
@@ -347,29 +348,33 @@ func _add_decos_final(deco_container, shared_res, is_spawn):
 			
 			# --- ROAD INFLUENCE ---
 			var road_info = get_parent().get_road_influence(gx, gz)
+			var dist_to_road = road_info.dist
+			
 			if road_info.is_road:
 				y_h = lerp(y_h, road_info.height, road_info.weight)
 			
-			# LÓGICA DE ÁRBOLES EN EL BORDE DEL CAMINO
+			# REGLA 1: LIMPIEZA TOTAL DEL CAMINO
+			# Zona limpia: Vía 7 + transición rápida = 10 unidades.
+			if dist_to_road < 10.0:
+				continue
+			
+			# REGLA 2: ÁRBOLES EN EL BORDE (EL MURO DE VEGETACIÓN)
 			var is_road_tree = false
-			if road_info.dist < 20.0 and road_info.dist > 13.0: 
-				# Solo poner árboles si el terreno no es agua
-				if y_h > -6.0:
-					# Espaciado determinista basado en la posición en el mundo
-					var tree_spacing = 15.0 # Un poco más cerca (antes 18)
+			# Zona de los bordes del camino (de 10m a 25m del centro)
+			if dist_to_road >= 10.0 and dist_to_road <= 25.0:
+				if type != Biome.SNOW and y_h > -6.0:
+					var tree_spacing = 6.5 # Espaciado masivo para bosque denso
 					var grid_gx = round(gx / tree_spacing) * tree_spacing
 					var grid_gz = round(gz / tree_spacing) * tree_spacing
 					
-					# Si estamos cerca de un nodo de la cuadrícula, intentamos spawnear
-					if Vector2(gx, gz).distance_to(Vector2(grid_gx, grid_gz)) < 8.0:
-						# Usar un hash simple para decidir si este nodo específico tiene árbol (90% chance)
-						var node_hash = (int(grid_gx) * 31 + int(grid_gz) * 97) % 100
-						if node_hash < 90:
+					if Vector2(gx, gz).distance_to(Vector2(grid_gx, grid_gz)) < 4.5:
+						var node_hash = int(abs(int(grid_gx) * 31 + int(grid_gz) * 97)) % 100
+						if node_hash < 99: # 99% chance de árbol (Muro garantizado)
 							is_road_tree = true
 							type = Biome.JUNGLE
 			
-			# Don't spawn random objects on the road, but allow our "road trees"
-			if not is_road_tree and road_info.is_road and road_info.weight > 0.3:
+			# No spawnear vegetación normal sobre el camino
+			if not is_road_tree and road_info.is_road and road_info.weight > 0.05:
 				continue
 			
 			if not is_road_tree and randf() > spawn_chance: continue
