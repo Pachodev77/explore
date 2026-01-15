@@ -325,7 +325,8 @@ func setup_shared_resources():
 	shared_res["ground_mat"].set_shader_param("snow_tex", t_snow)
 	shared_res["ground_mat"].set_shader_param("jungle_tex", t_jungle)
 	shared_res["ground_mat"].set_shader_param("gravel_tex", t_gravel)
-	shared_res["ground_mat"].set_shader_param("uv_scale", 0.025)
+	shared_res["ground_mat"].set_shader_param("uv_scale", 0.04)  # Escala optimizada para triplanar
+	shared_res["ground_mat"].set_shader_param("triplanar_sharpness", 6.0)  # Suavidad de transición en pendientes
 	
 	var tree_scene = preload("res://ui/tree.glb")
 	if tree_scene:
