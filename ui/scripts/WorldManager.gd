@@ -18,12 +18,6 @@ var last_player_tile = Vector2.INF
 var update_timer = 0.0
 var _lod_upgrade_timer = 0.0 # Timer para upgrades de LOD
 
-# Configuración de alturas base
-const H_SNOW = 45.0
-const H_JUNGLE = 35.0
-const H_DESERT = 4.0
-const H_PRAIRIE = 2.0
-
 var shared_res = {
 	"ground_mat": ShaderMaterial.new(),
 	"tree_parts": [],
@@ -111,10 +105,10 @@ func _ready():
 		var h_val = height_noise.get_noise_2d(0, 0)
 		var b_noise_val = biome_noise.get_noise_2d(0, 0)
 		var deg = rad2deg(atan2(0, 0)) + (b_noise_val * 120.0)
-		var h_mult = H_PRAIRIE
-		if deg > 45 and deg <= 135: h_mult = H_JUNGLE
-		elif deg > -45 and deg <= 45: h_mult = H_DESERT
-		elif deg > -135 and deg <= -45: h_mult = H_SNOW
+		var h_mult = GameConfig.H_PRAIRIE
+		if deg > 45 and deg <= 135: h_mult = GameConfig.H_JUNGLE
+		elif deg > -45 and deg <= 45: h_mult = GameConfig.H_DESERT
+		elif deg > -135 and deg <= -45: h_mult = GameConfig.H_SNOW
 		
 		var spawn_y = h_val * h_mult + 5.0
 		player.global_transform.origin = Vector3(0, spawn_y, 0)

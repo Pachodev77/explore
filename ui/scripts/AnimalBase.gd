@@ -163,7 +163,7 @@ func _handle_void_safety():
 		is_landing = true # Volver a congelar para aterrizar seguro
 		landing_timer = 0.0
 		
-		var wm = get_tree().root.find_node("WorldManager", true, false)
+		var wm = ServiceLocator.get_world_manager()
 		if wm and wm.has_method("get_terrain_height_at"):
 			var gx = global_transform.origin.x
 			var gz = global_transform.origin.z

@@ -350,11 +350,6 @@ func _on_sidebar_button_input(event, btn_name):
 				if settings_panel:
 					settings_panel.visible = !settings_panel.visible
 					settings_panel.raise()
-			elif btn_name == "backpack":
-				var inv_panel = get_node_or_null("InventoryPanel")
-				if inv_panel:
-					inv_panel.visible = !inv_panel.visible
-					if inv_panel.visible: inv_panel.raise()
 			elif btn_name == "quests":
 				# Futura lógica de misiones
 				pass

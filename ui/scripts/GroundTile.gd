@@ -59,36 +59,51 @@ func setup_biome(_dummy_type, shared_resources, _dummy_height = 0, is_spawn = fa
 			
 		if not is_instance_valid(self) or gid != _generation_id: return
 		
-		# Spawneo escalonado de estructuras
+		# Spawneo escalonado de estructuras (Función unificada)
 		if is_spawn:
-			yield(get_tree(), "idle_frame")
-			if not is_instance_valid(self) or gid != _generation_id: return
-			StructureBuilder.add_fence(deco_container, shared_resources)
-			
-			if abs(translation.x) < 1.0 and abs(translation.z) < 1.0:
+			var struct_state = _spawn_structures(deco_container, shared_resources, gid)
+			if struct_state is GDScriptFunctionState:
+				yield(struct_state, "completed")
+
+# =============================================================================
+# FUNCIÓN UNIFICADA DE ESTRUCTURAS (Evita duplicación de código)
+# =============================================================================
+func _spawn_structures(deco_container, shared_res, gid):
+	yield(get_tree(), "idle_frame")
+	if not is_instance_valid(self) or gid != _generation_id: return
+	
+	StructureBuilder.add_fence(deco_container, shared_res)
+	
+	# Estructuras del tile central (Granja principal)
+	if abs(translation.x) < 1.0 and abs(translation.z) < 1.0:
+		yield(get_tree(), "idle_frame")
+		if not is_instance_valid(self) or gid != _generation_id: return
+		StructureBuilder.add_farmhouse(deco_container, shared_res)
+		
+		yield(get_tree(), "idle_frame")
+		if not is_instance_valid(self) or gid != _generation_id: return
+		StructureBuilder.add_stable(deco_container, shared_res)
+		
+		yield(get_tree(), "idle_frame")
+		if not is_instance_valid(self) or gid != _generation_id: return
+		StructureBuilder.add_chicken_coop(deco_container, shared_res)
+	else:
+		# Estructuras de asentamientos remotos
+		var wm = ServiceLocator.get_world_manager()
+		if wm and wm.has_method("is_settlement_tile"):
+			var tx = round(translation.x / TILE_SIZE)
+			var tz = round(translation.z / TILE_SIZE)
+			if wm.is_settlement_tile(int(tx), int(tz)):
 				yield(get_tree(), "idle_frame")
 				if not is_instance_valid(self) or gid != _generation_id: return
-				StructureBuilder.add_farmhouse(deco_container, shared_resources)
-				yield(get_tree(), "idle_frame")
-				if not is_instance_valid(self) or gid != _generation_id: return
-				StructureBuilder.add_stable(deco_container, shared_resources)
-				yield(get_tree(), "idle_frame")
-				if not is_instance_valid(self) or gid != _generation_id: return
-				StructureBuilder.add_chicken_coop(deco_container, shared_resources)
-			else:
-				var wm = ServiceLocator.get_world_manager()
-				if wm and wm.has_method("is_settlement_tile"):
-						var tx = round(translation.x / TILE_SIZE)
-						var tz = round(translation.z / TILE_SIZE)
-						if wm.is_settlement_tile(int(tx), int(tz)):
-							yield(get_tree(), "idle_frame")
-							if not is_instance_valid(self) or gid != _generation_id: return
-							if abs(translation.x - 600.0) < 1.0 and abs(translation.z) < 1.0:
-								StructureBuilder.add_market_base(deco_container, shared_resources)
-							elif abs(translation.x + 600.0) < 1.0 and abs(translation.z) < 1.0:
-								StructureBuilder.add_livestock_fair(deco_container, shared_resources)
-							elif abs(translation.x) < 1.0 and abs(translation.z + 600.0) < 1.0:
-								StructureBuilder.add_mine_base(deco_container, shared_resources)
+				
+				# Determinar tipo de estructura por ubicación
+				if abs(translation.x - 600.0) < 1.0 and abs(translation.z) < 1.0:
+					StructureBuilder.add_market_base(deco_container, shared_res)
+				elif abs(translation.x + 600.0) < 1.0 and abs(translation.z) < 1.0:
+					StructureBuilder.add_livestock_fair(deco_container, shared_res)
+				elif abs(translation.x) < 1.0 and abs(translation.z + 600.0) < 1.0:
+					StructureBuilder.add_mine_base(deco_container, shared_res)
 
 func upgrade_to_high_lod():
 	if current_lod == TileLOD.HIGH: return
@@ -118,32 +133,9 @@ func upgrade_to_high_lod():
 	if not is_instance_valid(self) or gid != _generation_id: return
 	
 	if current_is_spawn:
-		yield(get_tree(), "idle_frame")
-		if not is_instance_valid(self) or gid != _generation_id: return
-		StructureBuilder.add_fence(deco_container, current_shared_res)
-		if abs(translation.x) < 1.0 and abs(translation.z) < 1.0:
-			yield(get_tree(), "idle_frame")
-			if not is_instance_valid(self) or gid != _generation_id: return
-			StructureBuilder.add_farmhouse(deco_container, current_shared_res)
-			yield(get_tree(), "idle_frame")
-			if not is_instance_valid(self) or gid != _generation_id: return
-			StructureBuilder.add_stable(deco_container, current_shared_res)
-			yield(get_tree(), "idle_frame")
-			if not is_instance_valid(self) or gid != _generation_id: return
-			StructureBuilder.add_chicken_coop(deco_container, current_shared_res)
-		else:
-			var wm = ServiceLocator.get_world_manager()
-			if wm and wm.has_method("is_settlement_tile"):
-				var tx = round(translation.x / TILE_SIZE)
-				var tz = round(translation.z / TILE_SIZE)
-				if wm.is_settlement_tile(int(tx), int(tz)):
-					yield(get_tree(), "idle_frame")
-					if abs(translation.x - 600.0) < 1.0 and abs(translation.z) < 1.0:
-						StructureBuilder.add_market_base(deco_container, current_shared_res)
-					elif abs(translation.x + 600.0) < 1.0 and abs(translation.z) < 1.0:
-						StructureBuilder.add_livestock_fair(deco_container, current_shared_res)
-					elif abs(translation.x) < 1.0 and abs(translation.z + 600.0) < 1.0:
-						StructureBuilder.add_mine_base(deco_container, current_shared_res)
+		var struct_state = _spawn_structures(deco_container, current_shared_res, gid)
+		if struct_state is GDScriptFunctionState:
+			yield(struct_state, "completed")
 
 func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn, grid_res = GRID_RES_HIGH, lod_level = TileLOD.HIGH):
 	var gid = _generation_id

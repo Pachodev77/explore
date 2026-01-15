@@ -42,8 +42,6 @@ func _ready():
 	yield(get_tree(), "idle_frame")
 	
 	hud_ref = ServiceLocator.get_hud()
-	if not hud_ref:
-		hud_ref = get_tree().root.find_node("MainHUD", true, false)
 	
 	if hud_ref:
 		# Compatibilidad con señales directas del HUD
@@ -63,12 +61,7 @@ func _ready():
 	GameEvents.connect("camera_moved", self, "_on_camera_moved")
 	
 	dnc_ref = ServiceLocator.get_day_cycle()
-	if not dnc_ref:
-		dnc_ref = get_parent().get_node_or_null("DayNightCycle")
-		
 	wm = ServiceLocator.get_world_manager()
-	if not wm:
-		wm = get_tree().root.find_node("WorldManager", true, false)
 	
 	# Inicializar Modulos
 	stats.init(self, hud_ref, dnc_ref)
