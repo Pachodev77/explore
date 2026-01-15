@@ -5,7 +5,7 @@ enum TileLOD { HIGH, LOW }
 
 # Configuración del plano
 # LOD System: LOW = 4 res, no physics, no decos. HIGH = 12 res, full.
-const GRID_RES_HIGH = 12
+const GRID_RES_HIGH = 16
 const GRID_RES_LOW = 4
 const TILE_SIZE = GameConfig.TILE_SIZE
 var harvested_instances = {} # Persistencia de tala: { "tree_mmi": [indices], ... }
@@ -150,6 +150,9 @@ func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn, grid_res = G
 	var st = SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	
+	# Smooth groups ensure vertex normal sharing
+	st.add_smooth_group(true)
+	
 	var h_noise = shared_res["height_noise"]
 	var b_noise = shared_res["biome_noise"]
 	var hn = GameConfig.H_SNOW; var hs = GameConfig.H_JUNGLE
@@ -213,6 +216,10 @@ func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn, grid_res = G
 				wa = lerp(wa, 0.0, blend)
 			
 			var y = h_noise.get_noise_2d(gx, gz) * h_mult
+			
+			# Mejora de Realismo: Micro-detalle en la altura (Ruido secundario)
+			y += b_noise.get_noise_2d(gx * 8.0, gz * 8.0) * 0.4 
+			
 			if is_spawn: 
 				y = lerp(y, 2.0, blend)
 			
@@ -223,10 +230,20 @@ func _rebuild_mesh_and_physics(mesh_instance, shared_res, is_spawn, grid_res = G
 				if road_w > 0.1:
 					wr = lerp(wr, 0.4, road_w); wg = lerp(wg, 0.6, road_w)
 					wb = lerp(wb, 0.0, road_w); wa = lerp(wa, 0.0, road_w)
+			
+			# Mejora de Realismo: Vertex Jitter para romper la cuadrícula
+			# No aplicamos jitter en los bordes para mantener la costura entre tiles perfecta
+			var jitter_x = 0.0
+			var jitter_z = 0.0
+			if x > 0 and x < grid_res and z > 0 and z < grid_res:
+				var j_noise = b_noise.get_noise_2d(gx * 5.0, gz * 5.0)
+				jitter_x = j_noise * step * 0.45
+				jitter_z = h_noise.get_noise_2d(gz * 5.0, gx * 5.0) * step * 0.45
 					
-			var v = Vector3(lx, y, lz)
+			var v = Vector3(lx + jitter_x, y, lz + jitter_z)
 			st.add_color(Color(wr, wg, wb, wa))
 			st.add_uv(Vector2(x / float(grid_res), z / float(grid_res)))
+			# UV Adjustment for jitter could go here if needed, but world-pos UVs in shader handle it
 			st.add_vertex(v)
 		
 		# OPTIMIZACIÓN: Solo yield en HIGH LOD para evitar paroneos
