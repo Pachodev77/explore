@@ -14,10 +14,14 @@ var hud_ref = null
 var is_performing_action = false
 var _near_cow = false
 var _near_tree = false
+var _near_beehive = false
+var _near_coop = false
 
 var current_target_tree_mmi = null
 var current_target_tree_idx = -1
 var milking_target_cow = null
+var target_beehive = null
+var coop_pos = Vector3(-18.0, 1.0, 18.0)
 
 var _check_tick = 0
 
@@ -42,7 +46,7 @@ func update_interaction_check():
 			if target and c.global_transform.origin.distance_to(target) < 2.5:
 				is_in_stable = true
 		
-		if is_in_stable and c.global_transform.origin.distance_to(player.global_transform.origin) < 4.5:
+		if is_in_stable and c.global_transform.origin.distance_to(player.global_transform.origin) < 3.0:
 			can_milk = true
 			milking_target_cow = c
 			break
@@ -63,20 +67,53 @@ func update_interaction_check():
 				var max_check = min(mm.instance_count, 30)
 				for i in range(max_check):
 					var itf = mmi.global_transform * mm.get_instance_transform(i)
+					
+					# NO INTERACTUAR SI EL ARBOL TIENE ESCALA 0 (Ya talado)
+					if mm.get_instance_transform(i).basis.get_scale().length() < 0.1:
+						continue
+						
 					var dist = my_pos.distance_to(itf.origin)
 					if dist < closest_dist:
 						closest_dist = dist
 						can_wood = true
 						current_target_tree_mmi = mmi
 						current_target_tree_idx = i
-						if dist < 2.5: break
-			if can_wood and closest_dist < 2.5: break
+						if dist < 2.2: break
+			if can_wood and closest_dist < 2.2: break
+	
+	# 3. Deteccion de Colmenas (solo si no hay vacas ni arboles cerca)
+	var can_honey = false
+	if not can_milk and not can_wood:
+		target_beehive = null
+		var beehives = player.get_tree().get_nodes_in_group("beehive")
+		for b in beehives:
+			if b.global_transform.origin.distance_to(player.global_transform.origin) < 3.0:
+				if b.has_method("is_harvestable") and not b.is_harvestable():
+					continue
+				can_honey = true
+				target_beehive = b
+				break
+
+	# 4. Deteccion de Gallinero (solo si no hay otros cerca)
+	var can_eggs = false
+	if not can_milk and not can_wood and not can_honey:
+		var wm = ServiceLocator.get_world_manager()
+		var dnc = ServiceLocator.get_day_cycle()
+		if wm and dnc and wm.last_egg_harvest_day < dnc.get_current_day():
+			# Solo en el tile central (0,0)
+			if abs(player.global_transform.origin.x) < 75.0 and abs(player.global_transform.origin.z) < 75.0:
+				if player.global_transform.origin.distance_to(coop_pos) < 5.0:
+					can_eggs = true
 
 	_near_cow = can_milk
 	_near_tree = can_wood
+	_near_beehive = can_honey
+	_near_coop = can_eggs
 	
 	if _near_cow: hud_ref.set_action_label("MILK")
 	elif _near_tree: hud_ref.set_action_label("WOOD")
+	elif _near_beehive: hud_ref.set_action_label("HONEY")
+	elif _near_coop: hud_ref.set_action_label("EGGS")
 	else: hud_ref.set_action_label("ACTION")
 
 func execute_action():
@@ -86,6 +123,76 @@ func execute_action():
 		_start_milking_sequence()
 	elif _near_tree:
 		_start_woodcutting_sequence()
+	elif _near_beehive:
+		_start_honey_sequence()
+	elif _near_coop:
+		_start_egg_sequence()
+
+func _start_egg_sequence():
+	is_performing_action = true
+	player.is_performing_action = true
+	
+	var dir_to_coop = (coop_pos - player.global_transform.origin).normalized()
+	var target_rot = atan2(dir_to_coop.x, dir_to_coop.z)
+	player.get_node("MeshInstance").rotation.y = target_rot
+	
+	if player.has_node("WalkAnimator"):
+		player.get_node("WalkAnimator").set_milking(true) # Reusar animación
+	
+	yield(player.get_tree().create_timer(2.0), "timeout")
+	_finish_egg()
+
+func _finish_egg():
+	is_performing_action = false
+	player.is_performing_action = false
+	if player.has_node("WalkAnimator"):
+		player.get_node("WalkAnimator").set_milking(false)
+	
+	var chicken_count = player.get_tree().get_nodes_in_group("chicken").size()
+	if chicken_count > 0:
+		if player.has_node("/root/InventoryManager"):
+			player.get_node("/root/InventoryManager").add_item("egg", chicken_count)
+		
+		var wm = ServiceLocator.get_world_manager()
+		var dnc = ServiceLocator.get_day_cycle()
+		if wm and dnc:
+			wm.last_egg_harvest_day = dnc.get_current_day()
+
+func _start_honey_sequence():
+	if not target_beehive: return
+	is_performing_action = true
+	player.is_performing_action = true
+	
+	var dir_to_hive = (target_beehive.global_transform.origin - player.global_transform.origin).normalized()
+	var target_rot = atan2(dir_to_hive.x, dir_to_hive.z)
+	player.get_node("MeshInstance").rotation.y = target_rot
+	
+	if player.has_node("WalkAnimator"):
+		player.get_node("WalkAnimator").set_milking(true) # Reusar animación de manos
+	
+	yield(player.get_tree().create_timer(4.0), "timeout")
+	_finish_honey()
+
+func _finish_honey():
+	is_performing_action = false
+	player.is_performing_action = false
+	if player.has_node("WalkAnimator"):
+		player.get_node("WalkAnimator").set_milking(false)
+		
+	if player.has_node("/root/InventoryManager"):
+		player.get_node("/root/InventoryManager").add_item("honey", 1)
+	
+	# Registrar Cosecha para Cooldown de 3 dias
+	var wm = ServiceLocator.get_world_manager()
+	var dnc = ServiceLocator.get_day_cycle()
+	if wm and dnc and target_beehive:
+		var pos_key = "%d,%d,%d" % [round(target_beehive.global_transform.origin.x), round(target_beehive.global_transform.origin.y), round(target_beehive.global_transform.origin.z)]
+		wm.beehive_harvests[pos_key] = dnc.get_current_day()
+		# Forzar que el nodo oculte las abejas inmediatamente
+		if target_beehive.has_method("_ready"):
+			target_beehive._ready()
+	
+	target_beehive = null
 
 func _start_woodcutting_sequence():
 	if not current_target_tree_mmi: return

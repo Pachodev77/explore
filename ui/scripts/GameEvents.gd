@@ -28,6 +28,7 @@ signal animal_exited_shelter(animal_node)        # Node: Animal salió de refugi
 
 # --- EVENTOS DE MUNDO ---
 signal biome_changed(new_biome)          # Int: Nuevo bioma (enum)
+signal day_passed(day_number)            # Int: Número de día actual
 signal time_changed(is_night)            # Bool: true si es de noche
 signal settlement_discovered(name)       # String: Nombre del asentamiento
 signal tile_spawned(tile_coords)         # Vector2: Coordenadas del tile creado

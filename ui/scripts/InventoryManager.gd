@@ -17,11 +17,13 @@ var items: Dictionary = {
 	"wood": {"name": "Madera", "qty": 0, "icon": "res://ui/icons/item_wood.jpg"},
 	"stone": {"name": "Piedra", "qty": 0, "icon": "res://ui/icons/item_stone.jpg"},
 	"milk": {"name": "Leche", "qty": 0, "icon": "res://ui/icons/item_milk.jpg"},
-	"berries": {"name": "Bayas", "qty": 0, "icon": "res://ui/icons/item_berries.jpg"}
+	"berries": {"name": "Bayas", "qty": 0, "icon": "res://ui/icons/item_berries.jpg"},
+	"honey": {"name": "Miel", "qty": 0, "icon": "res://ui/icons/item_milk.jpg"}, # Reusar icono de leche temporalmente
+	"egg": {"name": "Huevo", "qty": 0, "icon": "res://ui/icons/item_berries.jpg"} # Icono temporal
 }
 
 # Orden de display para UI consistente
-const ITEM_ORDER: Array = ["wood", "stone", "milk", "berries"]
+const ITEM_ORDER: Array = ["wood", "stone", "milk", "berries", "honey", "egg"]
 
 func _ready() -> void:
 	ServiceLocator.register_service("inventory", self)

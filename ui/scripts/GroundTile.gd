@@ -87,6 +87,14 @@ func _spawn_structures(deco_container, shared_res, gid):
 		yield(get_tree(), "idle_frame")
 		if not is_instance_valid(self) or gid != _generation_id: return
 		StructureBuilder.add_chicken_coop(deco_container, shared_res)
+		
+		# AGREGAR COLMENA DE APICULTURA (Tile Central)
+		var Beehive = load("res://ui/scripts/ProceduralBeehive.gd")
+		if Beehive:
+			var hive = Beehive.new()
+			hive.translation = Vector3(25.0, 1.95, -25.0) # Nivel del suelo del corral
+			hive.scale = Vector3(1.2, 1.2, 1.2) # Tamaño realista
+			deco_container.add_child(hive)
 	else:
 		# Estructuras de asentamientos remotos
 		var wm = ServiceLocator.get_world_manager()
@@ -389,6 +397,22 @@ func _add_decos_final(deco_container, shared_res, is_spawn):
 				tf = tf.scaled(Vector3(s, s, s))
 				tf.origin = Vector3(lx, y_h - 1.1, lz)
 				tree_instances.append(tf)
+				
+				# POSIBILIDAD DE COLMENA (3% de los árboles de jungla para mayor fluidez)
+				if randf() < 0.03:
+					var Beehive = load("res://ui/scripts/ProceduralBeehive.gd")
+					if Beehive:
+						var hive = Beehive.new()
+						# Calcular posición con offset y su altura exacta
+						var offset = Vector3(2.5, 0, 0).rotated(Vector3.UP, rand_range(0, TAU))
+						var wm = ServiceLocator.get_world_manager()
+						var h_at_pos = y_h
+						if wm:
+							h_at_pos = wm.get_terrain_height_at(gx + offset.x, gz + offset.z)
+						
+						hive.translation = Vector3(lx + offset.x, h_at_pos, lz + offset.z)
+						hive.scale = Vector3(0.8, 0.8, 0.8)
+						deco_container.call_deferred("add_child", hive)
 			elif type == Biome.DESERT and shared_res["cactus_parts"].size() > 0:
 				var s = rand_range(0.7, 1.4)
 				tf = tf.scaled(Vector3(s, s, s))
@@ -489,3 +513,8 @@ func mark_instance_as_harvested(group_name, index):
 		harvested_instances[group_name] = []
 	if not index in harvested_instances[group_name]:
 		harvested_instances[group_name].append(index)
+
+func is_instance_harvested(group_name, index):
+	if harvested_instances.has(group_name):
+		return index in harvested_instances[group_name]
+	return false

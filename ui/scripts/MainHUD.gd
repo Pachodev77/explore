@@ -9,16 +9,37 @@ signal jump_pressed()
 signal torch_pressed()
 signal action_pressed()
 
+var damage_overlay = null
+
+func show_damage_flash():
+	if not damage_overlay:
+		damage_overlay = ColorRect.new()
+		damage_overlay.set_anchors_and_margins_preset(Control.PRESET_WIDE)
+		damage_overlay.color = Color(1, 0, 0, 0.3)
+		damage_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		damage_overlay.modulate.a = 0
+		add_child(damage_overlay)
+	
+	var t = get_tree().create_tween()
+	t.tween_property(damage_overlay, "modulate:a", 1.0, 0.1)
+	t.tween_property(damage_overlay, "modulate:a", 0.0, 0.2)
+
 func set_mount_visible(is_visible):
 	if buttons.has("mount"):
 		buttons["mount"].visible = is_visible
 
 func set_action_label(new_text):
-	if buttons.has("map"):
+	if buttons.has("map") and is_instance_valid(buttons["map"]):
+		# Actualizar Texto
 		for child in buttons["map"].get_children():
 			if child is Label:
 				child.text = new_text
 				break
+		
+		# Actualizar Iluminación (Glow) - Aumentado para máxima visibilidad (2.0)
+		if buttons["map"].material:
+			var is_special = (new_text != "ACTION" and new_text != "MAP")
+			buttons["map"].material.set_shader_param("glow", 2.0 if is_special else 0.0)
 
 # Joysticks (Ahora en contenedores flotantes sin panel)
 onready var left_joy = $MoveJoystickContainer/JoystickWell/Handle
@@ -155,26 +176,6 @@ func _ready():
 	
 	_style_buttons()
 	
-	# Etiqueta para el botón de antorcha
-	if buttons.has("torch"):
-		var label = Label.new()
-		label.text = "TORCH"
-		label.align = Label.ALIGN_CENTER
-		label.valign = Label.VALIGN_CENTER
-		label.mouse_filter = Control.MOUSE_FILTER_IGNORE # CRÍTICO: No bloquear clics
-		label.set_anchors_and_margins_preset(Control.PRESET_WIDE)
-		buttons["torch"].add_child(label)
-	
-	# Etiqueta para el botón de ACCIÓN (antiguo botón de mapa)
-	if buttons.has("map"):
-		var label = Label.new()
-		label.text = "ACTION"
-		label.align = Label.ALIGN_CENTER
-		label.valign = Label.VALIGN_CENTER
-		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		label.set_anchors_and_margins_preset(Control.PRESET_WIDE)
-		buttons["map"].add_child(label)
-	
 	# FIX Z-ORDER: Sidebar debe estar ENCIMA de los joysticks para recibir input
 	$Sidebar.raise()
 	
@@ -208,17 +209,24 @@ func _style_buttons():
 	
 	# Aplicar a botones derechos (ROJO)
 	for b in ["attack", "jump", "mount", "run"]:
-		if buttons.has(b): buttons[b].material = mat_red
+		if buttons.has(b) and is_instance_valid(buttons[b]): 
+			buttons[b].material = mat_red
 	
 	# Joystick Derecho (Rojo)
-	if right_joy: right_joy.material = mat_red
+	if is_instance_valid(right_joy): right_joy.material = mat_red
 		
 	# Aplicar a botones izquierdos (AZUL)
-	for b in ["bolt", "shield", "map", "zoom", "torch"]:
-		if buttons.has(b): buttons[b].material = mat_blue
+	for b in ["shield", "zoom", "torch"]:
+		if buttons.has(b) and is_instance_valid(buttons[b]): 
+			buttons[b].material = mat_blue
+
+	# BOTÓN DE ACCIÓN (Material Único para poder iluminarlo independientemente)
+	if buttons.has("map") and is_instance_valid(buttons["map"]):
+		var mat_action = mat_blue.duplicate()
+		buttons["map"].material = mat_action
 	
 	# Joystick Izquierdo (Azul)
-	if left_joy: left_joy.material = mat_blue
+	if is_instance_valid(left_joy): left_joy.material = mat_blue
 
 func _input(event):
 	var touch_pos = Vector2.ZERO
@@ -382,10 +390,14 @@ func animate_button_release(node):
 	button_tween.start()
 
 func set_health(val_percent):
-	$Header/StatusBars/HealthBarCont/HealthBar.material.set_shader_param("value", val_percent)
+	var bar = get_node_or_null("Header/StatusBars/HealthBarCont/HealthBar")
+	if bar and bar.material:
+		bar.material.set_shader_param("value", val_percent)
 
 func set_hydration(val_percent):
-	$Header/StatusBars/HydrationBarCont/HydrationBar.material.set_shader_param("value", val_percent)
+	var bar = get_node_or_null("Header/StatusBars/HydrationBarCont/HydrationBar")
+	if bar and bar.material:
+		bar.material.set_shader_param("value", val_percent)
 
 func _process(_delta):
 	# Actualizar brújula basado en la rotación de la cámara
@@ -395,9 +407,12 @@ func _process(_delta):
 		# El norte en Godot suele ser -Z (0 radianes en esta lógica)
 		var rot_y = cam.global_transform.basis.get_euler().y
 		# Rotamos el nodo completo para que roten las letras
-		$Header/CompassCont/Compass.rect_rotation = rad2deg(rot_y)
-		# Reseteamos la rotación interna del shader
-		$Header/CompassCont/Compass.material.set_shader_param("rotation", 0.0)
+		var compass = get_node_or_null("Header/CompassCont/Compass")
+		if compass:
+			compass.rect_rotation = rad2deg(rot_y)
+			# Reseteamos la rotación interna del shader
+			if compass.material:
+				compass.material.set_shader_param("rotation", 0.0)
 
 func _on_map_close():
 	var map_panel = get_node_or_null("MapPanel")

@@ -40,6 +40,8 @@ var shared_res = {
 }
 
 var current_seed = 0
+var beehive_harvests = {} # Persistencia de colmenas: { "global_pos_str": day_of_harvest }
+var last_egg_harvest_day = 0 
 
 # Object Pool
 var tile_pool = []

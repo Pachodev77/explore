@@ -44,6 +44,15 @@ func update_stats(delta):
 			if hud_ref:
 				hud_ref.set_health(health)
 
+func take_damage(amount):
+	health = max(0.0, health - amount)
+	if hud_ref:
+		hud_ref.set_health(health)
+		if hud_ref.has_method("show_damage_flash"):
+			hud_ref.show_damage_flash()
+	if health <= 0:
+		GameEvents.emit_signal("player_died")
+
 func add_healing(amount):
 	health = min(1.0, health + amount)
 	if hud_ref: hud_ref.set_health(health)

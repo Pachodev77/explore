@@ -12,6 +12,7 @@ onready var environment = get_parent().get_node("WorldEnvironment").environment
 onready var stars_sphere = get_node_or_null("StarsSphere")
 
 var time_of_day : float = 0.5
+var current_day : int = 1
 var last_update_time : float = 0.0
 var sun_rot_timer : float = 0.0
 var cached_camera : Camera = null
@@ -45,6 +46,8 @@ func _process(delta):
 	time_of_day += delta * cycle_speed
 	if time_of_day >= 1.0:
 		time_of_day -= 1.0
+		current_day += 1
+		GameEvents.emit_signal("day_passed", current_day)
 	
 	# OPTIMIZACIÓN: Solo actualizar ambiente cada 0.5s
 	last_update_time += delta
@@ -110,3 +113,6 @@ func get_day_phase():
 		return (time_of_day - 0.2) / 0.1
 	else: # 0.7 a 0.8
 		return (0.8 - time_of_day) / 0.1
+
+func get_current_day() -> int:
+	return current_day
