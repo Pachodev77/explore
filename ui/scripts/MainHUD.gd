@@ -52,12 +52,16 @@ onready var buttons = {
 	"run": $ActionsContainer/Run
 }
 
-# Botones de la barra lateral
+# Botones de la barra lateral (Izquierda y Derecha)
 onready var sidebar_buttons = {
 	"backpack": $Sidebar/Backpack,
 	"map_sidebar": $Sidebar/Map,
 	"social": $Sidebar/Social,
-	"settings": $Sidebar/Settings
+	"settings": $Sidebar/Settings,
+	"quests": $RightSidebar/Slot1,
+	"crafting": $RightSidebar/Slot2,
+	"skills": $RightSidebar/Slot3,
+	"inventory_right": $RightSidebar/Slot4
 }
 
 var notify_container : VBoxContainer
@@ -81,6 +85,13 @@ func _ready():
 	$ShortcutsContainer.mouse_filter = MOUSE_FILTER_IGNORE
 	$Header.mouse_filter = MOUSE_FILTER_IGNORE
 	$Sidebar.mouse_filter = MOUSE_FILTER_IGNORE  # CRÍTICO: Permitir que los toques lleguen a los botones hijos
+	$RightSidebar.mouse_filter = MOUSE_FILTER_IGNORE
+	
+	# Pre-configurar pivotes para animaciones (escala desde el centro)
+	for b in buttons.values():
+		if b: b.rect_pivot_offset = b.rect_size / 2
+	for b in sidebar_buttons.values():
+		if b: b.rect_pivot_offset = b.rect_size / 2
 	
 	# Conectar eventos de botones de acción (REVERTIDO A GUI_INPUT para compatibilidad total)
 	for btn_name in buttons:
@@ -340,6 +351,20 @@ func _on_sidebar_button_input(event, btn_name):
 					settings_panel.visible = !settings_panel.visible
 					settings_panel.raise()
 			elif btn_name == "backpack":
+				var inv_panel = get_node_or_null("InventoryPanel")
+				if inv_panel:
+					inv_panel.visible = !inv_panel.visible
+					if inv_panel.visible: inv_panel.raise()
+			elif btn_name == "quests":
+				# Futura lógica de misiones
+				pass
+			elif btn_name == "crafting":
+				# Futura lógica de crafting
+				pass
+			elif btn_name == "skills":
+				# Futura lógica de habilidades
+				pass
+			elif btn_name == "inventory_right":
 				var inv_panel = get_node_or_null("InventoryPanel")
 				if inv_panel:
 					inv_panel.visible = !inv_panel.visible

@@ -113,9 +113,6 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
 script = ExtResource( 1 )
-__meta__ = {
-"_edit_use_anchors_": false
-}
 
 [node name="BackBufferCopy" type="BackBufferCopy" parent="."]
 copy_mode = 2
@@ -228,8 +225,8 @@ rect_min_size = Vector2( 300, 15 )
 
 [node name="Currency" type="HBoxContainer" parent="Header"]
 margin_left = 500.0
-margin_right = 876.0
-margin_bottom = 50.0
+margin_right = 1132.0
+margin_bottom = 80.0
 mouse_filter = 2
 size_flags_horizontal = 3
 custom_constants/separation = 12
@@ -237,9 +234,8 @@ alignment = 2
 
 [node name="Diamonds" type="ColorRect" parent="Header/Currency"]
 material = SubResource( 9 )
-margin_left = 104.0
-margin_top = 0.0
-margin_right = 224.0
+margin_left = 338.0
+margin_right = 458.0
 margin_bottom = 40.0
 rect_min_size = Vector2( 120, 40 )
 size_flags_vertical = 0
@@ -255,33 +251,30 @@ alignment = 1
 
 [node name="Icon" type="ColorRect" parent="Header/Currency/Diamonds/H"]
 material = SubResource( 11 )
-margin_left = 20.0
 margin_top = 4.0
-margin_right = 52.0
+margin_right = 32.0
 margin_bottom = 36.0
 rect_min_size = Vector2( 32, 32 )
 size_flags_vertical = 4
 
 [node name="ValueWrapper" type="Control" parent="Header/Currency/Diamonds/H"]
-margin_left = 56.0
-margin_right = 136.0
+margin_left = 36.0
+margin_right = 116.0
 margin_bottom = 40.0
 rect_min_size = Vector2( 80, 40 )
 
 [node name="Value" type="Label" parent="Header/Currency/Diamonds/H/ValueWrapper"]
-margin_left = 0.0
 margin_top = 8.0
 margin_right = 40.0
 margin_bottom = 16.0
-rect_scale = Vector2( 2.0, 2.0 )
+rect_scale = Vector2( 2, 2 )
 custom_colors/font_color = Color( 0.45098, 0.823529, 1, 1 )
 text = "1250"
 
 [node name="Gold" type="ColorRect" parent="Header/Currency"]
 material = SubResource( 10 )
-margin_left = 236.0
-margin_top = 0.0
-margin_right = 376.0
+margin_left = 470.0
+margin_right = 610.0
 margin_bottom = 40.0
 rect_min_size = Vector2( 140, 40 )
 size_flags_vertical = 0
@@ -297,38 +290,37 @@ alignment = 1
 
 [node name="Icon" type="ColorRect" parent="Header/Currency/Gold/H"]
 material = SubResource( 12 )
-margin_left = 28.0
+margin_left = 8.0
 margin_top = 6.0
-margin_right = 56.0
+margin_right = 36.0
 margin_bottom = 34.0
 rect_min_size = Vector2( 28, 28 )
 size_flags_vertical = 4
 
 [node name="ValueWrapper" type="Control" parent="Header/Currency/Gold/H"]
-margin_left = 60.0
-margin_right = 140.0
+margin_left = 40.0
+margin_right = 120.0
 margin_bottom = 40.0
 rect_min_size = Vector2( 80, 40 )
 
 [node name="Value" type="Label" parent="Header/Currency/Gold/H/ValueWrapper"]
-margin_left = 0.0
 margin_top = 8.0
 margin_right = 40.0
 margin_bottom = 16.0
-rect_scale = Vector2( 2.0, 2.0 )
+rect_scale = Vector2( 2, 2 )
 custom_colors/font_color = Color( 1, 0.843137, 0, 1 )
 text = "50400"
 
 [node name="MarginSpacer" type="Control" parent="Header/Currency"]
-margin_left = 380.0
-margin_right = 390.0
-margin_bottom = 40.0
+margin_left = 622.0
+margin_right = 632.0
+margin_bottom = 80.0
 rect_min_size = Vector2( 10, 0 )
 mouse_filter = 2
 
 [node name="CompassCont" type="Control" parent="Header"]
-margin_left = 896.0
-margin_right = 976.0
+margin_left = 1152.0
+margin_right = 1232.0
 margin_bottom = 80.0
 rect_min_size = Vector2( 80, 80 )
 mouse_filter = 2
@@ -337,8 +329,10 @@ mouse_filter = 2
 material = SubResource( 13 )
 anchor_right = 1.0
 anchor_bottom = 1.0
-margin_top = 11.0
-margin_bottom = 11.0
+margin_left = -3.0
+margin_top = 8.0
+margin_right = -3.0
+margin_bottom = 8.0
 rect_min_size = Vector2( 80, 80 )
 rect_pivot_offset = Vector2( 40, 40 )
 mouse_filter = 2

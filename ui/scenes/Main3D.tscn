@@ -34,7 +34,6 @@ height = 10000.0
 [sub_resource type="ShaderMaterial" id=8]
 shader = ExtResource( 5 )
 shader_param/time_of_day = 0.5
-shader_param/sun_axis = Vector3( 1, 0, 0 )
 
 [node name="Main3D" type="Spatial"]
 script = ExtResource( 6 )

@@ -21,7 +21,9 @@ var body_materials = {
 	"UpperLegs": null,
 	"LowerLegs": null,
 	"Feet": null,
-	"Hands": null
+	"Hands": null,
+	"Hat": null,
+	"HatBand": null
 }
 
 func _ready():
@@ -35,7 +37,7 @@ func _ready():
 				dir.remove(file_name)
 			file_name = dir.get_next()
 	
-	var cache_path = "user://humanoid_cache_final_v7.tres"
+	var cache_path = "user://humanoid_cache_final_v10.tres"
 	var cached_mesh = null
 	
 	_setup_materials()
@@ -76,7 +78,9 @@ func _setup_materials():
 		"UpperLegs": ["UpperLegL", "UpperLegR"],
 		"LowerLegs": ["LowerLegL", "LowerLegR"],
 		"Feet": ["FootL", "FootR"],
-		"Hands": ["HandL", "HandR"]
+		"Hands": ["HandL", "HandR"],
+		"Hat": ["Head"],
+		"HatBand": ["Head"]
 	}
 	
 	for group_name in part_groups.keys():
@@ -106,8 +110,14 @@ func _setup_materials():
 		# Forzar el uso del ShaderMaterial en todas las plataformas para un look sólido y limpio
 		var mat = ShaderMaterial.new()
 		mat.shader = load("res://ui/shaders/realistic_skin.shader")
-		mat.set_shader_param("skin_color", Color(1, 1, 1))
 		mat.set_shader_param("albedo_texture", tex)
+		
+		# COLOR ESPECIAL PARA LA FRANJA DEL SOMBRERO
+		if group_name == "HatBand":
+			mat.set_shader_param("skin_color", Color(0.1, 0.1, 0.1)) # Negro/Gris muy oscuro
+		else:
+			mat.set_shader_param("skin_color", Color(1, 1, 1))
+			
 		body_materials[group_name] = mat
 
 var _dnc_ref = null
@@ -211,13 +221,24 @@ func _generate_skinned_mesh():
 			["Head", Vector3(0, 1.66, 0.148), Vector3(0.045, 0.01, 0.012)] # Un poco más arriba (de 1.63 a 1.66)
 		],
 		"Hair": [
-			["Head", Vector3(0, 1.81, -0.01), Vector3(0.135, 0.16, 0.155)]
+			# Reducido en altura (Y) y ligeramente más bajo para que el sombrero lo cubra
+			["Head", Vector3(0, 1.76, -0.01), Vector3(0.135, 0.09, 0.155)]
 		],
 		"Nose": [
 			["Head", Vector3(0, 1.7, 0.16), Vector3(0.015, 0.025, 0.02)] # Un poco más adentro
 		],
 		"Neck": [
 			["Neck", Vector3(0, 1.55, 0), Vector3(0.06, 0.25, 0.06)]
+		],
+		"Hat": [
+			# Ala del sombrero (Brim) - Un poco inclinada
+			["Head", Vector3(0, 1.83, 0.02), Vector3(0.3, 0.02, 0.32)],
+			# Copa del sombrero (Crown)
+			["Head", Vector3(0, 1.9, 0.02), Vector3(0.14, 0.12, 0.16)]
+		],
+		"HatBand": [
+			# Franja negra decorativa en la base de la copa
+			["Head", Vector3(0, 1.85, 0.02), Vector3(0.145, 0.03, 0.165)]
 		],
 		"Shoulders": [],
 		"UpperArms": [],
@@ -308,6 +329,23 @@ func _generate_skinned_mesh():
 						taper = lerp(1.0, 1.15, v_orig.y)
 					v.x *= taper
 					v.x *= taper
+				
+				if group_name == "Hat":
+					if size.y < 0.05: # Ala del sombrero (Brim)
+						# Curvar hacia arriba en los laterales (estilo cowboy)
+						v.y += pow(v_orig.x, 2) * 0.6
+						# Curvar levemente el frente y atrás hacia abajo
+						v.y -= abs(v_orig.z) * 0.1
+					else: # Copa del sombrero (Crown)
+						# Estrechar hacia arriba
+						var t = clamp(v_orig.y * 0.5 + 0.5, 0.0, 1.0)
+						var crown_taper = lerp(1.0, 0.7, t)
+						v.x *= crown_taper
+						v.z *= crown_taper
+						# Hendidura superior (pinch)
+						if v_orig.y > 0.7:
+							v.y -= 0.15
+							v.x *= 0.9
 				
 				# 2. ESCALADO
 				v.x *= size.x; v.y *= size.y; v.z *= size.z

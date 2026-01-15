@@ -1,11 +1,10 @@
-[gd_scene load_steps=5 format=2]
+[gd_scene load_steps=4 format=2]
 
 [ext_resource path="res://ui/scripts/Goat.gd" type="Script" id=1]
 [ext_resource path="res://ui/scripts/ProceduralGoat.gd" type="Script" id=2]
 
 [sub_resource type="CapsuleShape" id=1]
 radius = 0.4
-height = 1.0
 
 [node name="Goat" type="KinematicBody"]
 script = ExtResource( 1 )
