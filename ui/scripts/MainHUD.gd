@@ -379,12 +379,14 @@ func _on_sidebar_button_input(event, btn_name):
 
 func animate_button_press(node):
 	if not button_tween: return
+	AudioManager.play_sfx("ui_click", 0.8)
 	button_tween.stop_all()
 	button_tween.interpolate_property(node, "rect_scale", node.rect_scale, Vector2(0.92, 0.92), 0.05, Tween.TRANS_LINEAR, Tween.EASE_IN_OUT)
 	button_tween.start()
 
 func animate_button_release(node):
 	if not button_tween: return
+	AudioManager.play_sfx("ui_click", 0.6)
 	button_tween.stop_all()
 	button_tween.interpolate_property(node, "rect_scale", node.rect_scale, Vector2(1.0, 1.0), 0.1, Tween.TRANS_LINEAR, Tween.EASE_IN_OUT)
 	button_tween.start()

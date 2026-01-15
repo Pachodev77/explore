@@ -63,6 +63,7 @@ InventoryManager="*res://ui/scripts/InventoryManager.gd"
 LoadingManager="*res://ui/scripts/LoadingManager.gd"
 SceneManager="*res://ui/scripts/SceneManager.gd"
 SaveManager="*res://ui/scripts/SaveManager.gd"
+AudioManager="*res://ui/scripts/AudioManager.gd"
 
 [display]
 

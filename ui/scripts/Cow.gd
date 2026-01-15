@@ -22,6 +22,7 @@ func _get_animal_group() -> String:
 
 func _on_animal_ready():
 	# Configuración específica de vacas
+	animal_type = "cow"
 	speed = 1.5
 	rotation_speed = 2.0
 	gravity = 25.0

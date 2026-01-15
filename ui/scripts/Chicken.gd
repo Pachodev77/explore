@@ -28,6 +28,7 @@ func _get_animal_group() -> String:
 
 func _on_animal_ready():
 	# Configuración específica de gallinas
+	animal_type = "chicken"
 	speed = 2.0
 	rotation_speed = 8.0
 	gravity = 20.0

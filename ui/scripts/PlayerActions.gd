@@ -139,6 +139,7 @@ func _start_egg_sequence():
 	if player.has_node("WalkAnimator"):
 		player.get_node("WalkAnimator").set_milking(true) # Reusar animación
 	
+	AudioManager.play_sfx("milking", 0.6)
 	yield(player.get_tree().create_timer(2.0), "timeout")
 	_finish_egg()
 
@@ -170,6 +171,7 @@ func _start_honey_sequence():
 	if player.has_node("WalkAnimator"):
 		player.get_node("WalkAnimator").set_milking(true) # Reusar animación de manos
 	
+	AudioManager.play_sfx("milking", 0.7) # Sonido similar para recolectar
 	yield(player.get_tree().create_timer(4.0), "timeout")
 	_finish_honey()
 
@@ -217,7 +219,8 @@ func _start_woodcutting_sequence():
 	if player.has_node("WalkAnimator"):
 		player.get_node("WalkAnimator").set_chopping(true)
 	
-	yield(player.get_tree().create_timer(3.0), "timeout")
+	AudioManager.play_sfx("chopping", 1.0)
+	yield(player.get_tree().create_timer(1.2), "timeout") # Duración síncrona con animación
 	_finish_woodcutting()
 
 func _finish_woodcutting():
@@ -261,6 +264,7 @@ func _start_milking_sequence():
 	if player.has_node("WalkAnimator"):
 		player.get_node("WalkAnimator").set_milking(true)
 	
+	AudioManager.play_sfx("milking", 0.8)
 	yield(player.get_tree().create_timer(3.0), "timeout")
 	_finish_milking()
 

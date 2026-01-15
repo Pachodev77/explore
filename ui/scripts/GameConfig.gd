@@ -91,3 +91,12 @@ const BUTTON_DEBOUNCE_MS: int = 150
 
 const DEFAULT_CYCLE_DURATION_MINUTES: float = 5.0
 const NIGHT_THRESHOLD: float = 0.7  # Valor de day_phase bajo el cual es "noche"
+
+# =============================================================================
+# AUDIO
+# =============================================================================
+
+const AUDIO_ENABLED: bool = true
+const AUDIO_VOLUME_SFX: float = 1.0
+const AUDIO_VOLUME_MUSIC: float = 0.6
+const AUDIO_VOLUME_AMBIENT: float = 0.5

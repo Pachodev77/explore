@@ -13,6 +13,7 @@ export var speed = 2.0
 export var rotation_speed = 3.0
 export var gravity = GameConfig.PLAYER_GRAVITY
 export var active_dist = 60.0  # Distancia máxima para procesar física
+export var animal_type = ""    # Identificador para sonidos (cow, goat, chicken)
 
 # --- ESTADO DE MOVIMIENTO ---
 var velocity = Vector3.ZERO
@@ -33,6 +34,8 @@ var night_waypoint_pos: Vector3
 var night_target_pos: Vector3
 var has_reached_waypoint = false
 var is_exiting = false
+
+var sound_timer = 0.0
 
 # --- REFERENCIAS CACHEADAS ---
 var _player_node: Node = null
@@ -87,6 +90,8 @@ func _ready():
 	
 	# Hook para clases hijas
 	_on_animal_ready()
+	
+	sound_timer = rand_range(2.0, 15.0)
 
 func _process(delta):
 	_check_timer -= delta
@@ -140,6 +145,23 @@ func _physics_process(delta):
 	# 6. Animación
 	_update_eating_weight(ed)
 	_update_animation_phase(ed)
+	
+	# Sonidos aleatorios 3D
+	sound_timer -= ed
+	if sound_timer <= 0:
+		_play_random_sound()
+		sound_timer = rand_range(8.0, 20.0)
+
+func _play_random_sound():
+	if not is_active: return
+	var s_name = ""
+	match animal_type:
+		"cow": s_name = "moo"
+		"goat": s_name = "baa"
+		"chicken": s_name = "cluck"
+	
+	if s_name != "":
+		AudioManager.play_sfx_3d(s_name, global_transform.origin, rand_range(0.6, 1.0))
 
 # =============================================================================
 # SISTEMAS COMUNES

@@ -25,6 +25,8 @@ var is_milking = false
 var is_chopping = false
 var chop_phase = 0.0
 
+var last_phase = 0.0
+
 # --- PARÁMETROS DE SUAVIZADO (FLUIDEZ) ---
 var curr_crouch = 0.0
 var curr_arm_raise = 0.0
@@ -96,8 +98,14 @@ func _process(delta):
 		jump_timer = 0.0
 	
 	if is_walking and walk_speed > 0.1:
+		var prev_phase = phase
 		phase += delta * speed_multiplier * walk_speed
 		if phase > TAU: phase -= TAU
+		
+		# Detectar contacto de pies (2 impactos por ciclo TAU)
+		if (prev_phase < PI and phase >= PI) or (prev_phase > phase):
+			if is_on_floor:
+				AudioManager.play_sfx("footstep_grass", 0.4 if run_weight < 0.5 else 0.6)
 	else:
 		phase = lerp(phase, 0.0, 5.0 * delta)
 	
@@ -149,6 +157,7 @@ func set_jumping(jumping):
 	if jumping and current_jump_state == JumpState.IDLE and is_on_floor:
 		current_jump_state = JumpState.ANTICIPATION
 		jump_timer = 0.0
+		AudioManager.play_sfx("jump", 1.0)
 
 func set_torch(active):
 	is_holding_torch = active
@@ -167,6 +176,7 @@ func update_physics_state(v_vel, full_velocity, grounded):
 	if grounded and current_jump_state == JumpState.IN_AIR:
 		current_jump_state = JumpState.IMPACT
 		jump_timer = 0.0
+		AudioManager.play_sfx("land", 0.8)
 	
 	is_on_floor = grounded
 	

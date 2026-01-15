@@ -26,6 +26,7 @@ func _get_animal_group() -> String:
 
 func _on_animal_ready():
 	# Ajustes de velocidad y rotación más suaves para evitar círculos
+	animal_type = "goat"
 	speed = 4.2
 	rotation_speed = 4.0 # Rotación más natural
 	if mesh_gen:

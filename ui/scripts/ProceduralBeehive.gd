@@ -27,7 +27,24 @@ func _ready():
 	is_active_swarm = is_available
 	if is_active_swarm:
 		_setup_bees()
+		_setup_ambient_audio()
 	set_process(is_active_swarm)
+
+func _setup_ambient_audio():
+	var asp = AudioStreamPlayer3D.new()
+	asp.name = "BeeAudio"
+	if AudioManager.sounds.has("bee_loop"):
+		var stream = load(AudioManager.sounds["bee_loop"])
+		if stream:
+			asp.stream = stream
+			asp.unit_db = linear2db(0.4)
+			asp.max_db = 0.0
+			asp.unit_size = 3.0
+			asp.max_distance = 15.0
+			asp.autoplay = true
+			asp.stream_paused = false
+			asp.bus = "SFX"
+			add_child(asp)
 
 func _process(delta):
 	attack_cooldown -= delta
@@ -38,6 +55,7 @@ func _process(delta):
 			if dist < 5.0:
 				if player.stats:
 					player.stats.take_damage(0.04)
+					AudioManager.play_sfx("bee_sting", 0.6)
 					attack_cooldown = 2.5 # Picaduras más lentas (cada 2.5 segundos)
 
 func is_harvestable():
