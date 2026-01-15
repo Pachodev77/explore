@@ -29,6 +29,14 @@ func _ready():
 		load_game_btn.disabled = not ServiceLocator.get_save_manager().has_save_file()
 	
 	call_deferred("_start_background_loading")
+	
+	# Aplicar bordes redondeados al logo
+	var title = $TitleCont/Title
+	var shader = load("res://ui/shaders/rounded_logo.shader")
+	if shader:
+		var mat = ShaderMaterial.new()
+		mat.shader = shader
+		title.material = mat
 
 func _start_background_loading():
 	if ResourceLoader.has_cached(GAME_SCENE_PATH):
