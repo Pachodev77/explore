@@ -10,6 +10,7 @@ onready var new_game_btn = $ButtonsCont/NewGame
 onready var load_game_btn = $ButtonsCont/LoadGame
 onready var options_btn = $ButtonsCont/Options
 onready var credits_btn = $ButtonsCont/Credits
+onready var exit_btn = $ButtonsCont/Exit
 
 var _loader: ResourceInteractiveLoader = null
 var _main_scene_resource: PackedScene = null
@@ -21,6 +22,7 @@ func _ready():
 	load_game_btn.connect("pressed", self, "_on_load_game_pressed")
 	options_btn.connect("pressed", self, "_on_options_pressed")
 	credits_btn.connect("pressed", self, "_on_credits_pressed")
+	exit_btn.connect("pressed", self, "_on_exit_pressed")
 	
 	# Desactivar botón de carga si no hay archivo
 	if ServiceLocator.has_service("save_manager"):
@@ -91,3 +93,6 @@ func _on_options_pressed():
 func _on_credits_pressed():
 	# TODO: Implementar pantalla de créditos
 	pass
+
+func _on_exit_pressed():
+	get_tree().quit()
