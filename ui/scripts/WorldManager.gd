@@ -1,161 +1,281 @@
+# =============================================================================
+# WorldManager.gd - COORDINADOR PRINCIPAL DEL MUNDO
+# =============================================================================
+# Orquesta los subsistemas del mundo: tiles, animales, agua, terreno.
+# 
+# ARQUITECTURA MODULAR:
+# - TileManager.gd     → Gestión de tiles (spawn, pool, LOD)
+# - AnimalSpawner.gd   → Spawning de animales inicial
+# - WaterManager.gd    → Plano de agua
+# - TerrainUtils.gd    → Cálculo de altura/biomas
+# - SharedResources.gd → Recursos compartidos
+# =============================================================================
+
 extends Spatial
 
-# Configuración del mapa optimizada
-export(PackedScene) var tile_scene = preload("res://ui/scenes/GroundTile.tscn")
-export var tile_size = 150.0
-export var render_distance = 4 # Más amplio para evitar ver el borde
+# Configuración exportada
+export var tile_size: float = 150.0
+export var render_distance: int = 4
 
+# Referencias principales
 onready var player = get_parent().get_node("Player")
 
-var active_tiles = {}
-var spawn_queue = [] 
+# Subsistemas (instanciados en _ready)
+var tile_manager: TileManager
+var terrain_utils: TerrainUtils
+var water_manager: WaterManager
+var animal_spawner: AnimalSpawner
+var entity_cleaner: EntityCleaner
 
-var noise = OpenSimplexNoise.new()
-var height_noise = OpenSimplexNoise.new()
-var biome_noise = OpenSimplexNoise.new()
-var road_system = RoadSystem.new()
-var last_player_tile = Vector2.INF
-var update_timer = 0.0
-var _lod_upgrade_timer = 0.0 # Timer para upgrades de LOD
+# Sistemas de ruido
+var noise: OpenSimplexNoise = OpenSimplexNoise.new()
+var height_noise: OpenSimplexNoise = OpenSimplexNoise.new()
+var biome_noise: OpenSimplexNoise = OpenSimplexNoise.new()
+var road_system: RoadSystem = RoadSystem.new()
 
-var shared_res = {
-	"ground_mat": ShaderMaterial.new(),
-	"tree_parts": [],
-	"cactus_parts": [],
-	"rock_mesh": SphereMesh.new(),
-	"rock_mat": SpatialMaterial.new(),
-	"bush_mesh": CubeMesh.new(),
-	"bush_mat": SpatialMaterial.new(),
-	"height_noise": null,
-	"biome_noise": null,
-	"H_SNOW": GameConfig.H_SNOW,
-	"H_JUNGLE": GameConfig.H_JUNGLE,
-	"H_DESERT": GameConfig.H_DESERT,
-	"H_PRAIRIE": GameConfig.H_PRAIRIE,
-	"wood_mat": null, # Cached
-	"sign_mat": null, # Cached
-	"cow_scene": null,
-	"goat_scene": null,
-	"chicken_scene": null
-}
+# Recursos compartidos (acceso directo para compatibilidad)
+var shared_res: Dictionary = {}
 
-var current_seed = 0
-var beehive_harvests = {} # Persistencia de colmenas: { "global_pos_str": day_of_harvest }
-var last_egg_harvest_day = 0 
+# Estado del mundo
+var current_seed: int = 0
+var beehive_harvests: Dictionary = {}  # { "global_pos_str": day_of_harvest }
+var last_egg_harvest_day: int = 0
 
-# Object Pool
-var tile_pool = []
+# Timers
+var update_timer: float = 0.0
+
+# =============================================================================
+# INICIALIZACIÓN
+# =============================================================================
 
 func _ready():
 	ServiceLocator.register_service("world", self)
 	
-	# Safety Check for exported variables
-	if tile_size == null: tile_size = GameConfig.TILE_SIZE
-	if render_distance == null: render_distance = GameConfig.RENDER_DISTANCE
+	# Validar configuración
+	if tile_size == null:
+		tile_size = GameConfig.TILE_SIZE
+	if render_distance == null:
+		render_distance = GameConfig.RENDER_DISTANCE
 	
+	# Inicializar seed
 	randomize()
 	var common_seed = randi()
-	var saved_data = null
+	var saved_data = _load_saved_data()
 	
+	if saved_data and saved_data.has("world_seed"):
+		common_seed = int(saved_data["world_seed"])
+	
+	current_seed = common_seed
+	
+	# Configurar sistemas de ruido
+	_setup_noise_systems(common_seed)
+	
+	# Inicializar recursos compartidos
+	_init_shared_resources()
+	
+	# Inicializar subsistemas
+	_init_subsystems()
+	
+	# Aplicar datos guardados o posición de spawn
+	_apply_player_position(saved_data)
+	
+	# Desactivar física del jugador temporalmente
+	if player.has_method("set_physics_process"):
+		player.set_physics_process(false)
+	
+	# Generar área inicial
+	tile_manager.spawn_initial_area(player.global_transform.origin)
+	
+	# Esperar frames para colisiones
+	yield(get_tree(), "idle_frame")
+	yield(get_tree(), "idle_frame")
+	
+	# Iniciar secuencia de spawn completa
+	_start_spawn_sequence(saved_data)
+
+func _load_saved_data():
+	"""Carga datos guardados si existen."""
 	if ServiceLocator.has_service("save_manager"):
 		var sm = ServiceLocator.get_save_manager()
 		if sm.has_pending_load:
-			saved_data = sm.get_pending_data()
-			if saved_data and saved_data.has("world_seed"):
-				common_seed = int(saved_data["world_seed"])
-	
-	current_seed = common_seed
-	noise.seed = common_seed
+			return sm.get_pending_data()
+	return null
+
+func _setup_noise_systems(seed_val: int) -> void:
+	"""Configura los sistemas de ruido."""
+	noise.seed = seed_val
 	noise.octaves = 3
 	noise.period = 15.0
 	noise.persistence = 0.5
 	
-	height_noise.seed = common_seed + 1
+	height_noise.seed = seed_val + 1
 	height_noise.octaves = 3
 	height_noise.period = 60.0
 	height_noise.persistence = 0.25
 	
-	biome_noise.seed = common_seed + 2
+	biome_noise.seed = seed_val + 2
 	biome_noise.octaves = 2
 	biome_noise.period = 600.0
 	biome_noise.persistence = 0.5
 	
-	shared_res["height_noise"] = height_noise
-	shared_res["biome_noise"] = biome_noise
+	road_system.init(seed_val, tile_size)
+
+func _init_shared_resources() -> void:
+	"""Inicializa el diccionario de recursos compartidos."""
+	shared_res = {
+		"ground_mat": ShaderMaterial.new(),
+		"tree_parts": [],
+		"cactus_parts": [],
+		"rock_mesh": SphereMesh.new(),
+		"rock_mat": SpatialMaterial.new(),
+		"bush_mesh": CubeMesh.new(),
+		"bush_mat": SpatialMaterial.new(),
+		"height_noise": height_noise,
+		"biome_noise": biome_noise,
+		"H_SNOW": GameConfig.H_SNOW,
+		"H_JUNGLE": GameConfig.H_JUNGLE,
+		"H_DESERT": GameConfig.H_DESERT,
+		"H_PRAIRIE": GameConfig.H_PRAIRIE,
+		"wood_mat": null,
+		"sign_mat": null,
+		"cow_scene": null,
+		"goat_scene": null,
+		"chicken_scene": null
+	}
 	
-	road_system.init(common_seed, tile_size)
-	setup_shared_resources()
+	_setup_shared_resources_internal()
+
+func _setup_shared_resources_internal() -> void:
+	"""Carga todos los recursos compartidos."""
+	# Shader de terreno
+	var shader = preload("res://ui/shaders/biome_blending.shader")
+	shared_res["ground_mat"].shader = shader
 	
-	# Aplicar posición del jugador si hay carga
+	# Texturas
+	var t_grass = preload("res://ui/textures/grass.jpg")
+	var t_sand = preload("res://ui/textures/sand.jpg")
+	var t_snow = preload("res://ui/textures/snow.jpg")
+	var t_jungle = preload("res://ui/textures/jungle.jpg")
+	var t_gravel = preload("res://ui/textures/gravel.jpg")
+	
+	shared_res["ground_mat"].set_shader_param("grass_tex", t_grass)
+	shared_res["ground_mat"].set_shader_param("sand_tex", t_sand)
+	shared_res["ground_mat"].set_shader_param("snow_tex", t_snow)
+	shared_res["ground_mat"].set_shader_param("jungle_tex", t_jungle)
+	shared_res["ground_mat"].set_shader_param("gravel_tex", t_gravel)
+	shared_res["ground_mat"].set_shader_param("uv_scale", 0.04)
+	shared_res["ground_mat"].set_shader_param("triplanar_sharpness", 6.0)
+	
+	# Meshes de árboles y cactus
+	var tree_scene = preload("res://ui/tree.glb")
+	if tree_scene:
+		var tree_inst = tree_scene.instance()
+		shared_res["tree_parts"] = _find_meshes_recursive(tree_inst)
+		tree_inst.queue_free()
+	
+	var cactus_scene = preload("res://ui/cactus.glb")
+	if cactus_scene:
+		var cactus_inst = cactus_scene.instance()
+		shared_res["cactus_parts"] = _find_meshes_recursive(cactus_inst)
+		cactus_inst.queue_free()
+		
+		for part in shared_res["cactus_parts"]:
+			if part and part.has("mat") and part.mat and part.mat is SpatialMaterial:
+				part.mat.emission_enabled = false
+				part.mat.flags_unshaded = false
+	
+	# Materiales
+	var wood_mat = SpatialMaterial.new()
+	wood_mat.albedo_color = Color(0.4, 0.25, 0.1)
+	wood_mat.roughness = 0.9
+	shared_res["wood_mat"] = wood_mat
+	
+	var sign_mat = SpatialMaterial.new()
+	sign_mat.albedo_color = Color(0.8, 0.7, 0.5)
+	shared_res["sign_mat"] = sign_mat
+	
+	# Escenas de animales
+	shared_res["cow_scene"] = load("res://ui/scenes/Cow.tscn")
+	shared_res["goat_scene"] = load("res://ui/scenes/Goat.tscn")
+	shared_res["chicken_scene"] = load("res://ui/scenes/Chicken.tscn")
+
+func _init_subsystems() -> void:
+	"""Inicializa los subsistemas modulares."""
+	# Terrain Utils
+	terrain_utils = TerrainUtils.new()
+	terrain_utils.init(height_noise, biome_noise, road_system)
+	
+	# Water Manager
+	water_manager = WaterManager.new()
+	water_manager.init(self, tile_size)
+	
+	# Tile Manager
+	tile_manager = TileManager.new()
+	tile_manager.init(self, road_system, shared_res, tile_size, render_distance)
+	
+	# Entity Cleaner (limpieza de animales lejanos)
+	entity_cleaner = EntityCleaner.new()
+	entity_cleaner.init(self)
+
+func _apply_player_position(saved_data) -> void:
+	"""Aplica la posición del jugador desde datos guardados o spawn inicial."""
 	if saved_data and saved_data.has("player_pos"):
 		var p = saved_data["player_pos"]
 		player.global_transform.origin = Vector3(p.x, p.y, p.z)
+		
 		if saved_data.has("player_rot_y"):
 			player.rotation.y = saved_data["player_rot_y"]
 		
-		# Cargar Inventario
 		if saved_data.has("inventory") and ServiceLocator.has_service("inventory"):
 			ServiceLocator.get_inventory_manager().load_save_data(saved_data["inventory"])
 		
-		# Restaurar Rotación de Cámara y Dirección de Mirada
 		if saved_data.has("player_cam_rot_x") and player.has_node("CameraPivot"):
 			player.get_node("CameraPivot").rotation.x = saved_data["player_cam_rot_x"]
+		
 		if saved_data.has("player_look_dir"):
 			player.look_dir = Vector2(saved_data["player_look_dir"].x, saved_data["player_look_dir"].y)
 	else:
-		# 1. Calcular altura exacta del terreno en (0,0) para spawn seguro
-		var h_val = height_noise.get_noise_2d(0, 0)
-		var b_noise_val = biome_noise.get_noise_2d(0, 0)
-		var deg = rad2deg(atan2(0, 0)) + (b_noise_val * 120.0)
-		var h_mult = GameConfig.H_PRAIRIE
-		if deg > 45 and deg <= 135: h_mult = GameConfig.H_JUNGLE
-		elif deg > -45 and deg <= 45: h_mult = GameConfig.H_DESERT
-		elif deg > -135 and deg <= -45: h_mult = GameConfig.H_SNOW
-		
-		var spawn_y = h_val * h_mult + 5.0
+		var spawn_y = terrain_utils.calculate_spawn_height()
 		player.global_transform.origin = Vector3(0, spawn_y, 0)
-	
-	# 2. Desactivar física temporalmente para que no caiga mientras cargan los tiles
-	if player.has_method("set_physics_process"):
-		player.set_physics_process(false)
-	
-	# 3. Generar área Inicial INMEDIATA (3x3)
-	# CRÍTICO: Los tiles inmediatos deben ser LOD.HIGH (0) para tener física y no caer al vacío
-	var p_coords = get_tile_coords(player.global_transform.origin)
-	for x in range(int(p_coords.x) - 1, int(p_coords.x) + 2):
-		for z in range(int(p_coords.y) - 1, int(p_coords.y) + 2):
-			var is_player_tile = (x == int(p_coords.x) and z == int(p_coords.y))
-			spawn_tile(x, z, 0 if is_player_tile else 1)
-	
-	# 4. ESPERAR a que la colisión del tile central esté lista
-	yield(get_tree(), "idle_frame")
-	yield(get_tree(), "idle_frame") # 2 frames son suficientes para el setup inicial
-	
-	last_player_tile = p_coords
-	
-	# NUEVO: El jugador permanece en pausa física hasta que world_ready se emita al final
-	# de la secuencia de spawn.
-	
-	_start_spawn_sequence()
 
-func _start_spawn_sequence():
-	# Sin esperas arbitrarias
-	
-	# Shader Warmup (Renderizar materiales una vez fuera de cámara)
+# =============================================================================
+# SECUENCIA DE SPAWN
+# =============================================================================
+
+func _start_spawn_sequence(saved_data = null) -> void:
+	"""Ejecuta la secuencia completa de spawn del mundo."""
+	# Warmup de shaders
 	_warmup_shaders()
 	yield(get_tree(), "idle_frame")
 	
-	# Carga escalonada de animales iniciales
-	var horse_scene = load("res://ui/scenes/Horse.tscn")
-	var saved_data = null
-	if ServiceLocator.get_save_manager().has_pending_load:
-		saved_data = ServiceLocator.get_save_manager().get_pending_data()
+	# Spawn de animales
+	yield(_spawn_all_animals(saved_data), "completed")
+	
+	# Actualizar tiles
+	tile_manager.update_tiles(player.global_transform.origin)
+	tile_manager.mark_updated(player.global_transform.origin)
+	
+	# Restaurar física del jugador
+	if is_instance_valid(player) and player.has_method("set_physics_process"):
+		player.set_physics_process(true)
+	
+	GameEvents.emit_signal("world_ready")
+	
+	if ServiceLocator.has_service("save_manager"):
+		ServiceLocator.get_save_manager().clear_pending_load()
 
+func _spawn_all_animals(saved_data) -> void:
+	"""Spawnea todos los animales iniciales."""
+	# Caballo
+	var horse_scene = load("res://ui/scenes/Horse.tscn")
 	if horse_scene:
 		yield(get_tree(), "idle_frame")
-		if not is_instance_valid(self): return
+		if not is_instance_valid(self):
+			return
+		
 		var horse = horse_scene.instance()
 		add_child(horse)
+		entity_cleaner.protect_animal(horse)  # Proteger de limpieza
 		
 		var h_pos = Vector3(10, 0, -10)
 		var h_rot = 0.0
@@ -174,11 +294,11 @@ func _start_spawn_sequence():
 		horse.rotation.y = h_rot
 		
 		if should_mount:
-			# Esperar un frame extra para que el caballo se asiente
 			yield(get_tree(), "idle_frame")
 			if is_instance_valid(player) and player.has_method("mount"):
 				player.mount(horse)
-		
+	
+	# Vacas
 	if shared_res["cow_scene"]:
 		for i in range(2):
 			var cow = shared_res["cow_scene"].instance()
@@ -188,11 +308,12 @@ func _start_spawn_sequence():
 			var h = get_terrain_height_at(offset, -offset)
 			cow.global_transform.origin = Vector3(offset, h + 0.8, -offset)
 			cow.is_night_cow = true
-			# Definir posición del establo (basado en StructureBuilder.add_stable)
 			cow.night_target_pos = Vector3(18.0, 2.0, 18.0)
-			cow.night_waypoint_pos = Vector3(18.0, 2.0, 10.0) # Frente a la entrada
+			cow.night_waypoint_pos = Vector3(18.0, 2.0, 10.0)
+			entity_cleaner.protect_animal(cow)  # Proteger de limpieza
 		yield(get_tree(), "idle_frame")
-			
+	
+	# Cabras
 	if shared_res["goat_scene"]:
 		for i in range(3):
 			var goat = shared_res["goat_scene"].instance()
@@ -202,8 +323,10 @@ func _start_spawn_sequence():
 			var spawn_pos = Vector3(10, 0, 0) + cluster_offset
 			var hg = get_terrain_height_at(spawn_pos.x, spawn_pos.z)
 			goat.global_transform.origin = Vector3(spawn_pos.x, hg + 0.8, spawn_pos.z)
+			entity_cleaner.protect_animal(goat)  # Proteger de limpieza
 		yield(get_tree(), "idle_frame")
-			
+	
+	# Gallinas
 	if shared_res["chicken_scene"]:
 		for i in range(4):
 			var chicken = shared_res["chicken_scene"].instance()
@@ -215,157 +338,92 @@ func _start_spawn_sequence():
 			var hc = get_terrain_height_at(spawn_pos.x, spawn_pos.z)
 			chicken.global_transform.origin = Vector3(spawn_pos.x, hc + 0.5, spawn_pos.z)
 			chicken.is_night_chicken = true
-			# Posición del gallinero (basado en StructureBuilder.add_chicken_coop)
 			chicken.night_target_pos = Vector3(-18.0, 2.0, 18.0)
-			chicken.night_waypoint_pos = Vector3(-18.0, 2.0, 14.0) # Frente a la rampa
+			chicken.night_waypoint_pos = Vector3(-18.0, 2.0, 14.0)
+			entity_cleaner.protect_animal(chicken)  # Proteger de limpieza
 		yield(get_tree(), "idle_frame")
-	
-	update_tiles()
-	
-	# Restaurar física del jugador al final de TODO (Garantiza suelo sólido)
-	if is_instance_valid(player) and player.has_method("set_physics_process"):
-		player.set_physics_process(true)
-		
-	GameEvents.emit_signal("world_ready")
-	
-	if ServiceLocator.has_service("save_manager"):
-		ServiceLocator.get_save_manager().clear_pending_load()
 
-func _warmup_shaders():
-	# Crear un nodo temporal para forzar la compilación de shaders
+func _warmup_shaders() -> void:
+	"""Pre-compila shaders para evitar stuttering."""
 	var cam = get_viewport().get_camera()
-	if not cam: return
+	if not cam:
+		return
 	
 	var warmup_node = Spatial.new()
 	warmup_node.translation = cam.global_transform.origin - cam.global_transform.basis.z * 2.0
 	add_child(warmup_node)
 	
-	# Renderizar una esfera con cada material importante
-	var mats = [
-		shared_res["ground_mat"],
-		shared_res["rock_mat"],
-		shared_res["wood_mat"]
-	]
+	var mats = [shared_res["ground_mat"], shared_res["rock_mat"], shared_res["wood_mat"]]
 	
 	for mat in mats:
-		if not mat: continue
+		if not mat:
+			continue
 		var mi = MeshInstance.new()
 		mi.mesh = SphereMesh.new()
-		mi.mesh.radius = 0.01 # Muy pequeño
+		mi.mesh.radius = 0.01
 		mi.material_override = mat
 		warmup_node.add_child(mi)
 	
-	# Dejar que se renderice por 1 frame y luego borrar
 	yield(get_tree(), "idle_frame")
 	warmup_node.queue_free()
 
-# ... (Previous code remains same until update_tiles loop) ...
+# =============================================================================
+# PROCESO
+# =============================================================================
 
-func update_tiles():
+func _process(delta):
 	var p_pos = player.global_transform.origin
-	var player_coords = get_tile_coords(p_pos)
-	var new_active_coords = []
-	var x_int = int(player_coords.x)
-	var z_int = int(player_coords.y)
 	
-
-	# Clean re-implementation of update_tiles loop
-	for x in range(x_int - render_distance, x_int + render_distance + 1):
-		for z in range(z_int - render_distance, z_int + render_distance + 1):
-			var coords = Vector2(x, z)
-			new_active_coords.append(coords)
-			
-			if not active_tiles.has(coords):
-				if not spawn_queue.has(coords):
-					# Insertar al principio para priorizar cercanía si no hay ordenamiento
-					spawn_queue.push_back(coords)
+	# Actualizar tiles SIEMPRE que cambie el tile del jugador
+	update_timer -= delta
+	if update_timer <= 0:
+		update_timer = 0.3  # Más frecuente (era 0.5)
+		# SIEMPRE actualizar tiles (sin condición should_update)
+		tile_manager.update_tiles(p_pos)
+		tile_manager.mark_updated(p_pos)
 	
-	# LIMPIEZA DE COLA
-	var filtered_queue = []
-	for c in spawn_queue:
-		if abs(c.x - x_int) <= render_distance and abs(c.y - z_int) <= render_distance:
-			filtered_queue.append(c)
-	spawn_queue = filtered_queue
+	# Procesar upgrades de LOD
+	tile_manager.process_lod_upgrades(delta, p_pos)
 	
-	# Ordenar por distancia solo si la cola es grande
-	if spawn_queue.size() > 5:
-		spawn_queue.sort_custom(self, "_sort_by_dist")
+	# Procesar cola de spawn
+	tile_manager.process_spawn_queue(p_pos)
 	
-	# RECYCLE TILES (Pooling)
-	var coords_to_remove = []
-	for coords in active_tiles.keys():
-		if not coords in new_active_coords:
-			coords_to_remove.append(coords)
+	# Limpiar entidades lejanas
+	entity_cleaner.process(delta)
 	
-	for coords in coords_to_remove:
-		var tile = active_tiles[coords]
-		if is_instance_valid(tile):
-			remove_child(tile)
-			tile_pool.append(tile)
-		active_tiles.erase(coords)
+	# Actualizar posición del agua
+	water_manager.update_position(p_pos)
 
-func _sort_by_dist(a, b):
-	var p_coords = get_tile_coords(player.global_transform.origin)
-	return a.distance_to(p_coords) < b.distance_to(p_coords)
+# =============================================================================
+# API PÚBLICA (Compatibilidad)
+# =============================================================================
 
+func get_terrain_height_at(x: float, z: float) -> float:
+	"""Obtiene la altura del terreno en una posición."""
+	return terrain_utils.get_terrain_height_at(x, z)
 
+func get_tile_coords(pos: Vector3) -> Vector2:
+	"""Convierte posición a coordenadas de tile."""
+	return tile_manager.get_tile_coords(pos)
 
-func setup_shared_resources():
-	# OPTIMIZACIÓN: preload = carga en compilación (instantáneo)
-	# load = carga en runtime (bloquea 100-200ms)
-	var shader = preload("res://ui/shaders/biome_blending.shader")
-	shared_res["ground_mat"].shader = shader
-	
-	var t_grass = preload("res://ui/textures/grass.jpg")
-	var t_sand = preload("res://ui/textures/sand.jpg")
-	var t_snow = preload("res://ui/textures/snow.jpg")
-	var t_jungle = preload("res://ui/textures/jungle.jpg")
-	var t_gravel = preload("res://ui/textures/gravel.jpg")
-	
-	shared_res["ground_mat"].set_shader_param("grass_tex", t_grass)
-	shared_res["ground_mat"].set_shader_param("sand_tex", t_sand)
-	shared_res["ground_mat"].set_shader_param("snow_tex", t_snow)
-	shared_res["ground_mat"].set_shader_param("jungle_tex", t_jungle)
-	shared_res["ground_mat"].set_shader_param("gravel_tex", t_gravel)
-	shared_res["ground_mat"].set_shader_param("uv_scale", 0.04)  # Escala optimizada para triplanar
-	shared_res["ground_mat"].set_shader_param("triplanar_sharpness", 6.0)  # Suavidad de transición en pendientes
-	
-	var tree_scene = preload("res://ui/tree.glb")
-	if tree_scene:
-		var tree_inst = tree_scene.instance()
-		shared_res["tree_parts"] = find_meshes_recursive(tree_inst)
-		tree_inst.queue_free()
-		
-	var cactus_scene = preload("res://ui/cactus.glb")
-	if cactus_scene:
-		var cactus_inst = cactus_scene.instance()
-		shared_res["cactus_parts"] = find_meshes_recursive(cactus_inst)
-		cactus_inst.queue_free()
-		
-		# FIX: Desactivar emisión en materiales importados del cactus
-		for part in shared_res["cactus_parts"]:
-			if part and part.has("mat") and part.mat and part.mat is SpatialMaterial:
-				part.mat.emission_enabled = false
-				part.mat.flags_unshaded = false # Asegurar que reaccione a luz
+func is_settlement_tile(x: int, z: int) -> bool:
+	"""Verifica si un tile es un asentamiento."""
+	return road_system.is_settlement_tile(x, z)
 
-	# CACHED MATERIALS (Fence)
-	var wood_mat = SpatialMaterial.new()
-	wood_mat.albedo_color = Color(0.4, 0.25, 0.1)
-	wood_mat.roughness = 0.9
-	shared_res["wood_mat"] = wood_mat
-	
-	var sign_mat = SpatialMaterial.new()
-	sign_mat.albedo_color = Color(0.8, 0.7, 0.5)
-	shared_res["sign_mat"] = sign_mat
+func get_road_influence(gx: float, gz: float) -> Dictionary:
+	"""Obtiene la influencia de carreteras en una posición."""
+	return road_system.get_road_influence(gx, gz)
 
-	# CACHE ANIMAL SCENES
-	shared_res["cow_scene"] = load("res://ui/scenes/Cow.tscn")
-	shared_res["goat_scene"] = load("res://ui/scenes/Goat.tscn")
-	shared_res["chicken_scene"] = load("res://ui/scenes/Chicken.tscn")
+# Acceso a tiles activos (para compatibilidad)
+var active_tiles: Dictionary setget , _get_active_tiles
+func _get_active_tiles() -> Dictionary:
+	return tile_manager.active_tiles if tile_manager else {}
 
-	create_water_plane()
+# =============================================================================
+# UTILIDADES
+# =============================================================================
 
-func find_meshes_recursive(node, results = []):
+func _find_meshes_recursive(node: Node, results: Array = []) -> Array:
 	if node is MeshInstance:
 		var mat = node.material_override
 		if not mat:
@@ -373,150 +431,14 @@ func find_meshes_recursive(node, results = []):
 		if not mat and node.mesh:
 			mat = node.mesh.surface_get_material(0)
 		results.append({"mesh": node.mesh, "mat": mat})
-		
+	
 	for child in node.get_children():
-		find_meshes_recursive(child, results)
+		_find_meshes_recursive(child, results)
 	return results
 
-func create_water_plane():
-	var water_mesh = MeshInstance.new()
-	var plane = PlaneMesh.new()
-	plane.size = Vector2(tile_size * 8, tile_size * 8)
-	plane.subdivide_depth = 15 # Aún más bajo para estabilidad
-	plane.subdivide_width = 15
-	
-	water_mesh.mesh = plane
-	water_mesh.name = "WaterPlane"
-	add_child(water_mesh)
-	
-	var mat = ShaderMaterial.new()
-	mat.shader = preload("res://ui/shaders/water.shader")
-	water_mesh.set_surface_material(0, mat)
-	water_mesh.translation.y = -8.0
+# Alias para compatibilidad (funciones que otros scripts pueden llamar)
+func update_tiles() -> void:
+	tile_manager.update_tiles(player.global_transform.origin)
 
-func _process(delta):
-	var p_pos = player.global_transform.origin
-	
-	# OPTIMIZACIÓN: Solo chequear cambio de tile/LOD con intervalos más largos
-	update_timer -= delta
-	if update_timer <= 0:
-		update_timer = 0.5 # 2 veces por segundo es suficiente
-		var current_tile_coords = get_tile_coords(p_pos)
-		if current_tile_coords.distance_to(last_player_tile) > 0.5:
-			last_player_tile = current_tile_coords
-			update_tiles()
-	
-	# LOD UPGRADE: Separado del update_tiles y con menor frecuencia
-	_lod_upgrade_timer -= delta
-	if _lod_upgrade_timer <= 0:
-		_lod_upgrade_timer = 2.0 # Solo cada 2 segundos - muy costoso
-		for coords in active_tiles.keys():
-			var tile = active_tiles[coords]
-			if tile.has_method("upgrade_to_high_lod") and tile.current_lod == tile.TileLOD.LOW:
-				var dist = p_pos.distance_to(tile.global_transform.origin)
-				if dist < 200.0: # Reducido aún más
-					tile.upgrade_to_high_lod()
-					break # Solo 1 por ciclo
- 
-	
-	# SPAWN QUEUE: 1 tile por frame (reducido a 4 candidatos de búsqueda)
-	if spawn_queue.size() > 0:
-		var best_idx = 0
-		var min_d = 99999.0
-		for i in range(min(spawn_queue.size(), 4)): # Reducido de 8 a 4
-			var d = p_pos.distance_to(Vector3(spawn_queue[i].x * tile_size, 0, spawn_queue[i].y * tile_size))
-			if d < min_d:
-				min_d = d
-				best_idx = i
-		
-		var coords = spawn_queue[best_idx]
-		spawn_queue.remove(best_idx)
-		spawn_tile(int(coords.x), int(coords.y))
-	
-	# Agua (Cacheada para evitar get_node_or_null cada frame)
-	if _cached_water == null:
-		_cached_water = get_node_or_null("WaterPlane")
-	if _cached_water:
-		_cached_water.translation.x = p_pos.x
-		_cached_water.translation.z = p_pos.z
-
-var _cached_water = null
-
-func spawn_tile(x, z, forced_lod = -1):
-	var coords = Vector2(x, z)
-	if active_tiles.has(coords): return
-	
-	var tile = null
-	# Intentar reciclar del pool
-	if tile_pool.size() > 0:
-		tile = tile_pool.pop_back()
-	else:
-		tile = tile_scene.instance()
-	
-	tile.translation = Vector3(x * tile_size, 0, z * tile_size)
-	tile.visible = true
-	add_child(tile)
-	
-	var is_spawn = (x == 0 and z == 0) or road_system.is_settlement_tile(x, z)
-	
-	# LOD logic: 0 = HIGH (con física), 1 = LOW (sin física)
-	var lod = forced_lod if forced_lod != -1 else 1
-	
-	if tile.has_method("setup_biome"):
-		tile.setup_biome(0, shared_res, 0, is_spawn, lod)
-	active_tiles[coords] = tile
-
-func get_tile_coords(pos):
-	# POSICIÓN GLOBAL: Usamos global_transform para ignorar el parentesco
-	return Vector2(floor((pos.x + tile_size*0.5) / tile_size), floor((pos.z + tile_size*0.5) / tile_size))
-
-
-func get_terrain_height_at(x, z):
-	if not shared_res.has("biome_noise") or not shared_res.has("height_noise"):
-		return 0.0
-		
-	var b_noise = shared_res["biome_noise"]
-	var h_noise = shared_res["height_noise"]
-	var noise_val = b_noise.get_noise_2d(x, z)
-	var deg = rad2deg(atan2(z, x)) + (noise_val * 120.0)
-	
-	while deg > 180: deg -= 360
-	while deg <= -180: deg += 360
-	
-	var hn = shared_res["H_SNOW"]; var hs = shared_res["H_JUNGLE"]
-	var he = shared_res["H_DESERT"]; var hw = shared_res["H_PRAIRIE"]
-	var h_mult = 0.0
-	
-	if deg >= -90 and deg <= 0:
-		var t = (deg + 90) / 90.0
-		h_mult = lerp(hn, he, t)
-	elif deg > 0 and deg <= 90:
-		var t = deg / 90.0
-		h_mult = lerp(he, hs, t)
-	elif deg > 90 and deg <= 180:
-		var t = (deg - 90) / 90.0
-		h_mult = lerp(hs, hw, t)
-	else:
-		var t = (deg + 180) / 90.0
-		h_mult = lerp(hw, hn, t)
-		
-	var y = h_noise.get_noise_2d(x, z) * h_mult
-	
-	# Spawn Area flattening (Approximation of GroundTile logic)
-	if abs(x) < 50 and abs(z) < 50:
-		var dist = max(abs(x), abs(z))
-		var blend = clamp(1.0 - (dist - 33.0) / 20.0, 0.0, 1.0)
-		y = lerp(y, 2.0, blend)
-		
-	var road_info = road_system.get_road_influence(x, z)
-	if road_info.is_road:
-		y = lerp(y, road_info.height, road_info.weight)
-		
-	return y
-
-# --- PROXY METHODS (Para compatibilidad con GroundTile y otros) ---
-func is_settlement_tile(x: int, z: int) -> bool:
-	return road_system.is_settlement_tile(x, z)
-
-func get_road_influence(gx: float, gz: float) -> Dictionary:
-	return road_system.get_road_influence(gx, gz)
+func setup_shared_resources() -> void:
+	_setup_shared_resources_internal()

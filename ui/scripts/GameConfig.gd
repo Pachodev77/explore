@@ -14,8 +14,8 @@ extends Node
 # Tamaño de cada tile en unidades
 const TILE_SIZE: float = 150.0
 
-# Distancia de renderizado (en tiles)
-const RENDER_DISTANCE: int = 4
+# Distancia de renderizado (en tiles) - 3 = área de 7x7 tiles = mejor rendimiento
+const RENDER_DISTANCE: int = 3
 
 # Nivel del agua (Y global)
 const WATER_LEVEL: float = -8.0
